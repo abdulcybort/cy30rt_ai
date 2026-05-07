@@ -1,21 +1,31 @@
-// Cy30rt_AI - Main Application Logic
+// Cy30rt_AI - Professional Cybersecurity Assistant
 // Created by Abdulbasid Yakubu (cy30rt)
 
 let currentResponseDiv = null;
 let currentResponseText = "";
+let currentLanguage = "en";
+let currentMessageDiv = null;
 
-// Send message function
+// Voice settings
+let voiceSpeed = 1.0;
+let voicePitch = 1.0;
+let autoPlayEnabled = false;
+let voiceReadbackEnabled = false;
+
 async function sendMessage() {
     const input = document.getElementById("messageInput");
     const message = input.value.trim();
     
     if (!message) return;
     
-    // Add user message to chat
     addUserMessage(message);
     input.value = "";
+    input.style.height = "auto";
     
-    // Show typing indicator
+    if (voiceReadbackEnabled) {
+        await textToSpeech(`You asked: ${message}`, currentLanguage);
+    }
+    
     showTypingIndicator();
     
     try {
@@ -37,7 +47,6 @@ async function sendMessage() {
         while (true) {
             const { done, value } = await reader.read();
             if (done) break;
-            
             const chunk = decoder.decode(value);
             appendToCurrentMessage(chunk);
         }
@@ -51,65 +60,165 @@ async function sendMessage() {
 }
 
 function addUserMessage(text) {
-    const chatMessages = document.getElementById("chatMessages");
+    const container = document.getElementById("chatMessages");
     const messageDiv = document.createElement("div");
-    messageDiv.className = "message user-message";
+    messageDiv.className = "message user";
     messageDiv.innerHTML = `
-        <div class="message-avatar">👤</div>
+        <div class="message-avatar">U</div>
         <div class="message-content">
+            <div class="message-header">
+                <span class="message-sender">You</span>
+                <span class="message-time">${new Date().toLocaleTimeString()}</span>
+            </div>
             <div class="message-text">${escapeHtml(text)}</div>
-            <div class="message-time">${new Date().toLocaleTimeString()}</div>
         </div>
     `;
-    chatMessages.appendChild(messageDiv);
+    container.appendChild(messageDiv);
     scrollToBottom();
 }
 
 function startNewAIMessage() {
-    const chatMessages = document.getElementById("chatMessages");
-    currentResponseDiv = document.createElement("div");
-    currentResponseDiv.className = "message ai-message";
-    currentResponseDiv.innerHTML = `
-        <div class="message-avatar">🤖</div>
+    const container = document.getElementById("chatMessages");
+    currentMessageDiv = document.createElement("div");
+    currentMessageDiv.className = "message ai";
+    currentMessageDiv.innerHTML = `
+        <div class="message-avatar">AI</div>
         <div class="message-content">
+            <div class="message-header">
+                <span class="message-sender">Cy30rt_AI</span>
+                <span class="message-time">Streaming...</span>
+            </div>
             <div class="message-text" id="streamingText"></div>
-            <div class="message-time">Streaming...</div>
         </div>
     `;
-    chatMessages.appendChild(currentResponseDiv);
+    container.appendChild(currentMessageDiv);
     currentResponseText = "";
     scrollToBottom();
 }
 
 function appendToCurrentMessage(chunk) {
     currentResponseText += chunk;
-    const textDiv = currentResponseDiv.querySelector(".message-text");
-    textDiv.innerHTML = escapeHtml(currentResponseText).replace(/\n/g, "<br>");
+    const textDiv = currentMessageDiv.querySelector(".message-text");
+    textDiv.innerHTML = formatMessageText(escapeHtml(currentResponseText));
     scrollToBottom();
 }
 
+function formatMessageText(text) {
+    // Convert code blocks
+    text = text.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
+    text = text.replace(/`([^`]+)`/g, '<code>$1</code>');
+    text = text.replace(/\n/g, '<br>');
+    return text;
+}
+
 function finishCurrentMessage() {
-    if (currentResponseDiv) {
-        const timeDiv = currentResponseDiv.querySelector(".message-time");
-        timeDiv.textContent = new Date().toLocaleTimeString();
+    if (currentMessageDiv) {
+        const timeSpan = currentMessageDiv.querySelector(".message-time");
+        if (timeSpan) timeSpan.textContent = new Date().toLocaleTimeString();
+        
+        // Add audio controls
+        addAudioControls(currentMessageDiv, currentResponseText, currentLanguage);
+        
+        // Auto-play if enabled
+        if (autoPlayEnabled) {
+            textToSpeech(currentResponseText, currentLanguage);
+        }
     }
-    currentResponseDiv = null;
+    currentMessageDiv = null;
     currentResponseText = "";
 }
 
+function addAudioControls(messageDiv, text, language) {
+    const controlsDiv = document.createElement("div");
+    controlsDiv.className = "audio-controls";
+    
+    const playBtn = document.createElement("button");
+    playBtn.className = "audio-btn";
+    playBtn.textContent = "Play Audio";
+    
+    const stopBtn = document.createElement("button");
+    stopBtn.className = "audio-btn";
+    stopBtn.textContent = "Stop";
+    
+    let isPlaying = false;
+    
+    playBtn.onclick = async () => {
+        if (isPlaying) {
+            window.speechSynthesis.cancel();
+            playBtn.textContent = "Play Audio";
+            isPlaying = false;
+            return;
+        }
+        playBtn.textContent = "Playing...";
+        isPlaying = true;
+        try {
+            await textToSpeech(text, language);
+            playBtn.textContent = "Play Again";
+            isPlaying = false;
+        } catch {
+            playBtn.textContent = "Error";
+            setTimeout(() => {
+                playBtn.textContent = "Play Audio";
+                isPlaying = false;
+            }, 2000);
+        }
+    };
+    
+    stopBtn.onclick = () => {
+        window.speechSynthesis.cancel();
+        playBtn.textContent = "Play Audio";
+        isPlaying = false;
+    };
+    
+    controlsDiv.appendChild(playBtn);
+    controlsDiv.appendChild(stopBtn);
+    
+    const contentDiv = messageDiv.querySelector(".message-content");
+    if (contentDiv) contentDiv.appendChild(controlsDiv);
+}
+
+async function textToSpeech(text, languageCode) {
+    return new Promise((resolve, reject) => {
+        if (!window.speechSynthesis) {
+            reject(new Error("Speech not supported"));
+            return;
+        }
+        
+        window.speechSynthesis.cancel();
+        
+        const voiceMap = {
+            'en': 'en-US', 'ar': 'ar-SA', 'es': 'es-ES',
+            'fr': 'fr-FR', 'de': 'de-DE', 'hi': 'hi-IN'
+        };
+        
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = voiceMap[languageCode] || 'en-US';
+        utterance.rate = voiceSpeed;
+        utterance.pitch = voicePitch;
+        utterance.volume = 1;
+        
+        utterance.onend = () => resolve(true);
+        utterance.onerror = (e) => reject(e);
+        
+        window.speechSynthesis.speak(utterance);
+    });
+}
+
 function addErrorMessage(error) {
-    const texts = UI_TEXTS?.[currentLanguage] || UI_TEXTS?.en || {};
-    const chatMessages = document.getElementById("chatMessages");
+    const container = document.getElementById("chatMessages");
     const errorDiv = document.createElement("div");
-    errorDiv.className = "message ai-message";
+    errorDiv.className = "message ai";
     errorDiv.innerHTML = `
-        <div class="message-avatar">⚠️</div>
+        <div class="message-avatar">!</div>
         <div class="message-content">
-            <div class="message-text" style="color: #ff4444;">Error: ${escapeHtml(error)}<br><br>Please try again.</div>
-            <div class="message-time">${new Date().toLocaleTimeString()}</div>
+            <div class="message-header">
+                <span class="message-sender">System</span>
+                <span class="message-time">${new Date().toLocaleTimeString()}</span>
+            </div>
+            <div class="message-text" style="color: #ef4444;">Unable to process request: ${escapeHtml(error)}</div>
         </div>
     `;
-    chatMessages.appendChild(errorDiv);
+    container.appendChild(errorDiv);
     scrollToBottom();
 }
 
@@ -135,122 +244,161 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
-// Handle quick action buttons
-function handleQuickAction(action) {
-    let message = "";
-    switch(action) {
-        case "learn":
-            message = "I want to learn about SQL injection. Can you teach me?";
-            break;
-        case "payloads":
-            message = "Show me SQL injection payload examples";
-            break;
-        case "labs":
-            message = "Recommend some practice labs for beginners";
-            break;
-        case "tutorials":
-            message = "Give me a step-by-step tutorial for SQL injection";
-            break;
-    }
-    if (message) {
-        document.getElementById("messageInput").value = message;
-        sendMessage();
-    }
+function addSystemMessage(text) {
+    const container = document.getElementById("chatMessages");
+    const sysDiv = document.createElement("div");
+    sysDiv.className = "message system";
+    sysDiv.innerHTML = `
+        <div class="message-content">
+            <div class="message-text" style="background: var(--bg-tertiary); text-align: center; font-size: 0.8rem;">🌐 ${escapeHtml(text)}</div>
+        </div>
+    `;
+    container.appendChild(sysDiv);
+    scrollToBottom();
 }
 
-// Voice input setup
+function changeLanguage(langCode) {
+    currentLanguage = langCode;
+    localStorage.setItem("cy30rt_language", langCode);
+    const texts = UI_TEXTS[langCode] || UI_TEXTS["en"];
+    document.getElementById("statusText").innerText = texts.online;
+    document.getElementById("typingText").innerText = texts.typing;
+    addSystemMessage(`Language changed to ${LANGUAGES[langCode].name}`);
+    closeLanguageModal();
+}
+
+// Voice input
 function setupVoiceInput() {
     const voiceBtn = document.getElementById("voiceBtn");
     if (!voiceBtn) return;
     
     const SpeechRecognition = window.webkitSpeechRecognition || window.SpeechRecognition;
-    
     if (!SpeechRecognition) {
         voiceBtn.style.opacity = "0.5";
-        voiceBtn.title = "Voice not supported in this browser";
         return;
     }
     
     const recognition = new SpeechRecognition();
     recognition.continuous = false;
     recognition.interimResults = false;
-    recognition.lang = "en-US";
     
     voiceBtn.onclick = () => {
+        recognition.lang = currentLanguage === "ar" ? "ar-SA" : "en-US";
         recognition.start();
-        voiceBtn.textContent = "🔴";
-        voiceBtn.style.background = "rgba(255,0,0,0.2)";
+        voiceBtn.style.opacity = "0.6";
     };
     
     recognition.onresult = (event) => {
         const text = event.results[0][0].transcript;
         document.getElementById("messageInput").value = text;
         sendMessage();
-        voiceBtn.textContent = "🎤";
-        voiceBtn.style.background = "";
+        voiceBtn.style.opacity = "1";
     };
     
-    recognition.onerror = () => {
-        voiceBtn.textContent = "🎤";
-        voiceBtn.style.background = "";
-    };
+    recognition.onerror = () => { voiceBtn.style.opacity = "1"; };
+    recognition.onend = () => { voiceBtn.style.opacity = "1"; };
+}
+
+// Settings
+function showSettingsModal() {
+    document.getElementById("settingsModal").classList.add("active");
+}
+
+function closeSettingsModal() {
+    document.getElementById("settingsModal").classList.remove("active");
+}
+
+function loadSettings() {
+    autoPlayEnabled = localStorage.getItem("auto_play") === "true";
+    voiceReadbackEnabled = localStorage.getItem("voice_readback") === "true";
+    voiceSpeed = parseFloat(localStorage.getItem("voice_speed") || "1.0");
+    voicePitch = parseFloat(localStorage.getItem("voice_pitch") || "1.0");
     
-    recognition.onend = () => {
-        voiceBtn.textContent = "🎤";
-        voiceBtn.style.background = "";
-    };
+    const autoToggle = document.getElementById("autoPlayToggle");
+    const readbackToggle = document.getElementById("voiceReadbackToggle");
+    const speedSlider = document.getElementById("voiceSpeed");
+    const pitchSlider = document.getElementById("voicePitch");
+    const speedVal = document.getElementById("speedValue");
+    const pitchVal = document.getElementById("pitchValue");
+    
+    if (autoToggle) autoToggle.checked = autoPlayEnabled;
+    if (readbackToggle) readbackToggle.checked = voiceReadbackEnabled;
+    if (speedSlider) speedSlider.value = voiceSpeed;
+    if (pitchSlider) pitchSlider.value = voicePitch;
+    if (speedVal) speedVal.textContent = voiceSpeed === 1.0 ? "Normal" : `${voiceSpeed.toFixed(1)}x`;
+    if (pitchVal) pitchVal.textContent = voicePitch === 1.0 ? "Normal" : `${voicePitch.toFixed(1)}x`;
 }
 
-// Show language modal
-function showLanguageModal() {
-    const modal = document.getElementById("languageModal");
-    if (modal) modal.classList.add("active");
+function saveSettings() {
+    autoPlayEnabled = document.getElementById("autoPlayToggle")?.checked || false;
+    voiceReadbackEnabled = document.getElementById("voiceReadbackToggle")?.checked || false;
+    voiceSpeed = parseFloat(document.getElementById("voiceSpeed")?.value || "1.0");
+    voicePitch = parseFloat(document.getElementById("voicePitch")?.value || "1.0");
+    
+    localStorage.setItem("auto_play", autoPlayEnabled);
+    localStorage.setItem("voice_readback", voiceReadbackEnabled);
+    localStorage.setItem("voice_speed", voiceSpeed);
+    localStorage.setItem("voice_pitch", voicePitch);
+    
+    const speedVal = document.getElementById("speedValue");
+    const pitchVal = document.getElementById("pitchValue");
+    if (speedVal) speedVal.textContent = voiceSpeed === 1.0 ? "Normal" : `${voiceSpeed.toFixed(1)}x`;
+    if (pitchVal) pitchVal.textContent = voicePitch === 1.0 ? "Normal" : `${voicePitch.toFixed(1)}x`;
 }
 
-function closeLanguageModal() {
-    const modal = document.getElementById("languageModal");
-    if (modal) modal.classList.remove("active");
-}
-
-// Initialize event listeners
+// Initialize
 document.addEventListener("DOMContentLoaded", () => {
-    // Send button
-    const sendBtn = document.getElementById("sendBtn");
-    if (sendBtn) sendBtn.addEventListener("click", sendMessage);
+    loadSettings();
     
-    // Enter key
-    const messageInput = document.getElementById("messageInput");
-    if (messageInput) {
-        messageInput.addEventListener("keypress", (e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                sendMessage();
-            }
-        });
-    }
-    
-    // Language button
-    const languageBtn = document.getElementById("languageBtn");
-    if (languageBtn) languageBtn.addEventListener("click", showLanguageModal);
-    
-    // Close modal
-    const closeModal = document.querySelector(".close-modal");
-    if (closeModal) closeModal.addEventListener("click", closeLanguageModal);
-    
-    // Quick action buttons
-    document.querySelectorAll(".action-btn").forEach(btn => {
-        btn.addEventListener("click", () => {
-            const action = btn.getAttribute("data-action");
-            if (action) handleQuickAction(action);
-        });
+    document.getElementById("sendBtn")?.addEventListener("click", sendMessage);
+    document.getElementById("messageInput")?.addEventListener("keypress", (e) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+        }
     });
     
-    // Voice input
+    document.getElementById("languageBtn")?.addEventListener("click", () => {
+        const modal = document.getElementById("languageModal");
+        const grid = document.getElementById("languageModalGrid");
+        if (grid && LANGUAGES) {
+            grid.innerHTML = "";
+            Object.entries(LANGUAGES).forEach(([code, lang]) => {
+                const btn = document.createElement("div");
+                btn.className = "language-item";
+                btn.onclick = () => changeLanguage(code);
+                btn.innerHTML = `<div class="language-flag">${lang.flag}</div><div class="language-name">${lang.name}</div><div class="language-native">${lang.native}</div>`;
+                grid.appendChild(btn);
+            });
+        }
+        modal.classList.add("active");
+    });
+    
+    document.getElementById("settingsBtn")?.addEventListener("click", showSettingsModal);
+    document.querySelector(".modal-close")?.addEventListener("click", () => {
+        document.getElementById("languageModal").classList.remove("active");
+    });
+    document.querySelector(".modal-close-settings")?.addEventListener("click", closeSettingsModal);
+    
+    document.getElementById("autoPlayToggle")?.addEventListener("change", saveSettings);
+    document.getElementById("voiceReadbackToggle")?.addEventListener("change", saveSettings);
+    document.getElementById("voiceSpeed")?.addEventListener("input", saveSettings);
+    document.getElementById("voicePitch")?.addEventListener("input", saveSettings);
+    
     setupVoiceInput();
     
-    // Click outside modal to close
-    window.onclick = (event) => {
-        const modal = document.getElementById("languageModal");
-        if (event.target === modal) closeLanguageModal();
-    };
+    const savedLang = localStorage.getItem("cy30rt_language");
+    if (savedLang && LANGUAGES && LANGUAGES[savedLang]) {
+        currentLanguage = savedLang;
+        document.getElementById("languageScreen").style.display = "none";
+        document.getElementById("mainApp").classList.add("active");
+    }
+});
+
+// Auto-resize textarea
+document.addEventListener("input", function(e) {
+    if (e.target.id === "messageInput") {
+        e.target.style.height = "auto";
+        e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px";
+    }
 });
