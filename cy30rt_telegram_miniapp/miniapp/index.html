@@ -9,27 +9,50 @@
     <meta name="theme-color" content="#0a0a0f">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600;14..32,700;14..32,800&display=swap" rel="stylesheet">
 </head>
 <body>
     <!-- Animated Background -->
     <div class="gradient-orb"></div>
     <div class="gradient-orb-2"></div>
+    <div class="gradient-orb-3"></div>
     
     <!-- Language Selection Screen -->
     <div id="languageScreen" class="language-screen">
         <div class="language-card">
             <div class="language-header">
                 <div class="ai-logo-animated">
-                    <div class="logo-ring"></div>
-                    <div class="logo-core">⚡</div>
+                    <div class="robot-ai-icon">
+                        <div class="robot-head">
+                            <div class="robot-antennas">
+                                <span class="antenna left"></span>
+                                <span class="antenna right"></span>
+                            </div>
+                            <div class="robot-face">
+                                <div class="robot-eyes">
+                                    <div class="eye left-eye"></div>
+                                    <div class="eye right-eye"></div>
+                                </div>
+                                <div class="robot-mouth">
+                                    <div class="mouth-line"></div>
+                                    <div class="mouth-line"></div>
+                                    <div class="mouth-line"></div>
+                                </div>
+                            </div>
+                            <div class="robot-ears">
+                                <div class="ear left-ear"></div>
+                                <div class="ear right-ear"></div>
+                            </div>
+                        </div>
+                        <div class="glow-ring"></div>
+                    </div>
                 </div>
-                <h1>Cy30rt_AI</h1>
+                <h1 class="gradient-title">Cy30rt_AI</h1>
                 <p>Cybersecurity Intelligence Platform</p>
                 <div class="badge-group">
-                    <span class="badge">AI-Powered</span>
-                    <span class="badge">Real-Time Intel</span>
-                    <span class="badge">15 Languages</span>
+                    <span class="badge">🤖 AI-Powered</span>
+                    <span class="badge">⚡ Real-Time Intel</span>
+                    <span class="badge">🌍 15 Languages</span>
                 </div>
             </div>
             <div class="language-grid" id="languageGrid"></div>
@@ -46,11 +69,17 @@
         <!-- Navigation Bar -->
         <nav class="nav-bar">
             <div class="nav-brand">
-                <div class="ai-icon-container">
-                    <div class="ai-pulse"></div>
-                    <span class="brand-icon">⚡</span>
+                <div class="robot-icon-small">
+                    <div class="small-robot-head">
+                        <div class="small-robot-eyes">
+                            <span class="small-eye"></span>
+                            <span class="small-eye"></span>
+                        </div>
+                        <div class="small-robot-mouth"></div>
+                    </div>
+                    <div class="pulse-ring"></div>
                 </div>
-                <span class="brand-name">Cy30rt_AI</span>
+                <span class="brand-name gradient-text">Cy30rt_AI</span>
                 <span class="brand-badge">SECURITY</span>
             </div>
             <div class="nav-actions">
@@ -85,8 +114,8 @@
                 <span class="status-dot"></span>
                 <span id="statusText">Operational</span>
                 <span class="status-divider">|</span>
-                <span class="api-badge">Cerebras AI</span>
-                <span class="api-badge">ContrastAPI</span>
+                <span class="api-badge">🤖 Cerebras AI</span>
+                <span class="api-badge">🔍 ContrastAPI</span>
             </div>
             <div id="modelInfo" class="model-info">Cybersecurity Intelligence v2.0</div>
         </div>
@@ -95,7 +124,7 @@
         <div class="chat-container" id="chatContainer">
             <div class="chat-messages" id="chatMessages">
                 <div class="message ai">
-                    <div class="message-avatar">AI</div>
+                    <div class="message-avatar">🤖</div>
                     <div class="message-content">
                         <div class="message-header">
                             <span class="message-sender">Cy30rt_AI</span>
@@ -128,15 +157,16 @@
             <button class="action-btn" data-action="recon">📡 Reconnaissance</button>
         </div>
         
-        <!-- Input Section -->
+        <!-- Input Section - WIDE AREA -->
         <div class="input-section">
-            <div class="input-wrapper">
+            <div class="input-wrapper-wide">
                 <textarea id="messageInput" rows="1" placeholder="Ask about vulnerabilities, CVE IDs, domain recon, or any cybersecurity topic..."></textarea>
-                <button id="sendBtn" class="send-btn">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <button id="sendBtn" class="send-btn-wide">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <line x1="22" y1="2" x2="11" y2="13"/>
                         <polygon points="22 2 15 22 11 13 2 9 22 2"/>
                     </svg>
+                    <span>Send</span>
                 </button>
             </div>
             <div class="input-footer">
@@ -198,7 +228,7 @@
                 </div>
                 <div class="setting-divider"></div>
                 <div class="info-text">
-                    <small>Powered by Cerebras AI (ultra-fast) + Groq (backup) + ContrastAPI (threat intel)</small>
+                    <small>Powered by 🤖 Cerebras AI (ultra-fast) + Groq (backup) + ContrastAPI (threat intel)</small>
                 </div>
             </div>
         </div>
