@@ -1,10 +1,12 @@
-// Cy30rt_AI - Professional Cybersecurity Assistant
+// Cy30rt_AI - Professional Cybersecurity Assistant v2
 // Created by Abdulbasid Yakubu (cy30rt)
 
+// ============ GLOBAL VARIABLES ============
 let currentResponseDiv = null;
 let currentResponseText = "";
 let currentLanguage = "en";
 let currentMessageDiv = null;
+let audioInitialized = false;
 
 // Voice settings
 let voiceSpeed = 1.0;
@@ -12,6 +14,55 @@ let voicePitch = 1.0;
 let autoPlayEnabled = false;
 let voiceReadbackEnabled = false;
 
+// Voice language mapping
+const voiceMap = {
+    'en': 'en-US', 'ar': 'ar-SA', 'es': 'es-ES',
+    'fr': 'fr-FR', 'de': 'de-DE', 'hi': 'hi-IN',
+    'ha': 'en-US', 'pt': 'pt-BR', 'ru': 'ru-RU',
+    'zh': 'zh-CN', 'ja': 'ja-JP', 'ko': 'ko-KR',
+    'tr': 'tr-TR', 'fa': 'fa-IR', 'ur': 'ur-PK'
+};
+
+// ============ AUDIO INITIALIZATION ============
+function initAudio() {
+    if (audioInitialized) return;
+    try {
+        const silent = new SpeechSynthesisUtterance("");
+        silent.volume = 0;
+        window.speechSynthesis.speak(silent);
+        audioInitialized = true;
+    } catch (e) {
+        console.log("Audio init:", e);
+    }
+}
+
+// ============ TEXT TO SPEECH (FIXED) ============
+async function textToSpeech(text, languageCode) {
+    return new Promise((resolve) => {
+        if (!window.speechSynthesis) {
+            resolve(false);
+            return;
+        }
+        
+        initAudio();
+        window.speechSynthesis.cancel();
+        
+        const cleanText = text.replace(/[\[\]\(\)\*\_\#]/g, '').substring(0, 1500);
+        
+        const utterance = new SpeechSynthesisUtterance(cleanText);
+        utterance.lang = voiceMap[languageCode] || 'en-US';
+        utterance.rate = voiceSpeed;
+        utterance.pitch = voicePitch;
+        utterance.volume = 1;
+        
+        utterance.onend = () => resolve(true);
+        utterance.onerror = () => resolve(false);
+        
+        window.speechSynthesis.speak(utterance);
+    });
+}
+
+// ============ SEND MESSAGE ============
 async function sendMessage() {
     const input = document.getElementById("messageInput");
     const message = input.value.trim();
@@ -21,6 +72,8 @@ async function sendMessage() {
     addUserMessage(message);
     input.value = "";
     input.style.height = "auto";
+    
+    initAudio();
     
     if (voiceReadbackEnabled) {
         await textToSpeech(`You asked: ${message}`, currentLanguage);
@@ -104,7 +157,6 @@ function appendToCurrentMessage(chunk) {
 }
 
 function formatMessageText(text) {
-    // Convert code blocks
     text = text.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
     text = text.replace(/`([^`]+)`/g, '<code>$1</code>');
     text = text.replace(/\n/g, '<br>');
@@ -116,12 +168,10 @@ function finishCurrentMessage() {
         const timeSpan = currentMessageDiv.querySelector(".message-time");
         if (timeSpan) timeSpan.textContent = new Date().toLocaleTimeString();
         
-        // Add audio controls
         addAudioControls(currentMessageDiv, currentResponseText, currentLanguage);
         
-        // Auto-play if enabled
         if (autoPlayEnabled) {
-            textToSpeech(currentResponseText, currentLanguage);
+            setTimeout(() => textToSpeech(currentResponseText, currentLanguage), 300);
         }
     }
     currentMessageDiv = null;
@@ -129,6 +179,9 @@ function finishCurrentMessage() {
 }
 
 function addAudioControls(messageDiv, text, language) {
+    const existing = messageDiv.querySelector(".audio-controls");
+    if (existing) existing.remove();
+    
     const controlsDiv = document.createElement("div");
     controlsDiv.className = "audio-controls";
     
@@ -142,21 +195,26 @@ function addAudioControls(messageDiv, text, language) {
     
     let isPlaying = false;
     
-    playBtn.onclick = async () => {
+    playBtn.onclick = async (e) => {
+        e.stopPropagation();
+        initAudio();
+        
         if (isPlaying) {
             window.speechSynthesis.cancel();
             playBtn.textContent = "Play Audio";
             isPlaying = false;
             return;
         }
+        
         playBtn.textContent = "Playing...";
         isPlaying = true;
+        
         try {
             await textToSpeech(text, language);
-            playBtn.textContent = "Play Again";
+            playBtn.textContent = "Play Audio";
             isPlaying = false;
         } catch {
-            playBtn.textContent = "Error";
+            playBtn.textContent = "Retry";
             setTimeout(() => {
                 playBtn.textContent = "Play Audio";
                 isPlaying = false;
@@ -164,7 +222,8 @@ function addAudioControls(messageDiv, text, language) {
         }
     };
     
-    stopBtn.onclick = () => {
+    stopBtn.onclick = (e) => {
+        e.stopPropagation();
         window.speechSynthesis.cancel();
         playBtn.textContent = "Play Audio";
         isPlaying = false;
@@ -177,31 +236,53 @@ function addAudioControls(messageDiv, text, language) {
     if (contentDiv) contentDiv.appendChild(controlsDiv);
 }
 
-async function textToSpeech(text, languageCode) {
-    return new Promise((resolve, reject) => {
-        if (!window.speechSynthesis) {
-            reject(new Error("Speech not supported"));
-            return;
+// ============ NEW CHAT BUTTON ============
+function newChat() {
+    const msgCount = document.querySelectorAll('.message').length;
+    if (msgCount > 2) {
+        if (confirm("Start a new conversation? Current chat will be cleared.")) {
+            clearAllMessages();
         }
-        
-        window.speechSynthesis.cancel();
-        
-        const voiceMap = {
-            'en': 'en-US', 'ar': 'ar-SA', 'es': 'es-ES',
-            'fr': 'fr-FR', 'de': 'de-DE', 'hi': 'hi-IN'
-        };
-        
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = voiceMap[languageCode] || 'en-US';
-        utterance.rate = voiceSpeed;
-        utterance.pitch = voicePitch;
-        utterance.volume = 1;
-        
-        utterance.onend = () => resolve(true);
-        utterance.onerror = (e) => reject(e);
-        
-        window.speechSynthesis.speak(utterance);
-    });
+    } else {
+        clearAllMessages();
+    }
+}
+
+function clearAllMessages() {
+    const container = document.getElementById("chatMessages");
+    container.innerHTML = '';
+    
+    const welcomeDiv = document.createElement("div");
+    welcomeDiv.className = "message ai";
+    welcomeDiv.innerHTML = `
+        <div class="message-avatar">AI</div>
+        <div class="message-content">
+            <div class="message-header">
+                <span class="message-sender">Cy30rt_AI</span>
+                <span class="message-time">Just now</span>
+            </div>
+            <div class="message-text">New conversation started. How can I assist you with cybersecurity today?</div>
+        </div>
+    `;
+    container.appendChild(welcomeDiv);
+    
+    currentMessageDiv = null;
+    currentResponseText = "";
+    addSystemMessage("Conversation reset. Previous context cleared.");
+    scrollToBottom();
+}
+
+function addSystemMessage(text) {
+    const container = document.getElementById("chatMessages");
+    const sysDiv = document.createElement("div");
+    sysDiv.className = "message system";
+    sysDiv.innerHTML = `
+        <div class="message-content">
+            <div class="message-text" style="background: var(--bg-tertiary); text-align: center; font-size: 0.8rem;">🌐 ${escapeHtml(text)}</div>
+        </div>
+    `;
+    container.appendChild(sysDiv);
+    scrollToBottom();
 }
 
 function addErrorMessage(error) {
@@ -215,7 +296,7 @@ function addErrorMessage(error) {
                 <span class="message-sender">System</span>
                 <span class="message-time">${new Date().toLocaleTimeString()}</span>
             </div>
-            <div class="message-text" style="color: #ef4444;">Unable to process request: ${escapeHtml(error)}</div>
+            <div class="message-text" style="color: #ef4444;">Error: ${escapeHtml(error)}</div>
         </div>
     `;
     container.appendChild(errorDiv);
@@ -244,62 +325,38 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
-function addSystemMessage(text) {
-    const container = document.getElementById("chatMessages");
-    const sysDiv = document.createElement("div");
-    sysDiv.className = "message system";
-    sysDiv.innerHTML = `
-        <div class="message-content">
-            <div class="message-text" style="background: var(--bg-tertiary); text-align: center; font-size: 0.8rem;">🌐 ${escapeHtml(text)}</div>
-        </div>
-    `;
-    container.appendChild(sysDiv);
-    scrollToBottom();
-}
-
+// ============ LANGUAGE ============
 function changeLanguage(langCode) {
     currentLanguage = langCode;
     localStorage.setItem("cy30rt_language", langCode);
-    const texts = UI_TEXTS[langCode] || UI_TEXTS["en"];
-    document.getElementById("statusText").innerText = texts.online;
-    document.getElementById("typingText").innerText = texts.typing;
     addSystemMessage(`Language changed to ${LANGUAGES[langCode].name}`);
     closeLanguageModal();
 }
 
-// Voice input
-function setupVoiceInput() {
-    const voiceBtn = document.getElementById("voiceBtn");
-    if (!voiceBtn) return;
+function showLanguageModal() {
+    const modal = document.getElementById("languageModal");
+    if (!modal) return;
     
-    const SpeechRecognition = window.webkitSpeechRecognition || window.SpeechRecognition;
-    if (!SpeechRecognition) {
-        voiceBtn.style.opacity = "0.5";
-        return;
+    const grid = document.getElementById("languageModalGrid");
+    if (grid && LANGUAGES) {
+        grid.innerHTML = "";
+        Object.entries(LANGUAGES).forEach(([code, lang]) => {
+            const btn = document.createElement("div");
+            btn.className = "language-item";
+            btn.onclick = () => changeLanguage(code);
+            btn.innerHTML = `<div class="language-flag">${lang.flag}</div><div class="language-name">${lang.name}</div><div class="language-native">${lang.native}</div>`;
+            grid.appendChild(btn);
+        });
     }
-    
-    const recognition = new SpeechRecognition();
-    recognition.continuous = false;
-    recognition.interimResults = false;
-    
-    voiceBtn.onclick = () => {
-        recognition.lang = currentLanguage === "ar" ? "ar-SA" : "en-US";
-        recognition.start();
-        voiceBtn.style.opacity = "0.6";
-    };
-    
-    recognition.onresult = (event) => {
-        const text = event.results[0][0].transcript;
-        document.getElementById("messageInput").value = text;
-        sendMessage();
-        voiceBtn.style.opacity = "1";
-    };
-    
-    recognition.onerror = () => { voiceBtn.style.opacity = "1"; };
-    recognition.onend = () => { voiceBtn.style.opacity = "1"; };
+    modal.classList.add("active");
 }
 
-// Settings
+function closeLanguageModal() {
+    const modal = document.getElementById("languageModal");
+    if (modal) modal.classList.remove("active");
+}
+
+// ============ SETTINGS ============
 function showSettingsModal() {
     document.getElementById("settingsModal").classList.add("active");
 }
@@ -346,11 +403,48 @@ function saveSettings() {
     if (pitchVal) pitchVal.textContent = voicePitch === 1.0 ? "Normal" : `${voicePitch.toFixed(1)}x`;
 }
 
-// Initialize
+// ============ VOICE INPUT ============
+function setupVoiceInput() {
+    const voiceBtn = document.getElementById("voiceBtn");
+    if (!voiceBtn) return;
+    
+    const SpeechRecognition = window.webkitSpeechRecognition || window.SpeechRecognition;
+    if (!SpeechRecognition) {
+        voiceBtn.style.opacity = "0.5";
+        return;
+    }
+    
+    const recognition = new SpeechRecognition();
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    
+    voiceBtn.onclick = () => {
+        initAudio();
+        recognition.lang = currentLanguage === "ar" ? "ar-SA" : "en-US";
+        recognition.start();
+        voiceBtn.style.opacity = "0.6";
+    };
+    
+    recognition.onresult = (event) => {
+        const text = event.results[0][0].transcript;
+        document.getElementById("messageInput").value = text;
+        sendMessage();
+        voiceBtn.style.opacity = "1";
+    };
+    
+    recognition.onerror = () => { voiceBtn.style.opacity = "1"; };
+    recognition.onend = () => { voiceBtn.style.opacity = "1"; };
+}
+
+// ============ INITIALIZE ============
 document.addEventListener("DOMContentLoaded", () => {
     loadSettings();
     
     document.getElementById("sendBtn")?.addEventListener("click", sendMessage);
+    document.getElementById("newChatBtn")?.addEventListener("click", newChat);
+    document.getElementById("languageBtn")?.addEventListener("click", showLanguageModal);
+    document.getElementById("settingsBtn")?.addEventListener("click", showSettingsModal);
+    
     document.getElementById("messageInput")?.addEventListener("keypress", (e) => {
         if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
@@ -358,26 +452,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
     
-    document.getElementById("languageBtn")?.addEventListener("click", () => {
-        const modal = document.getElementById("languageModal");
-        const grid = document.getElementById("languageModalGrid");
-        if (grid && LANGUAGES) {
-            grid.innerHTML = "";
-            Object.entries(LANGUAGES).forEach(([code, lang]) => {
-                const btn = document.createElement("div");
-                btn.className = "language-item";
-                btn.onclick = () => changeLanguage(code);
-                btn.innerHTML = `<div class="language-flag">${lang.flag}</div><div class="language-name">${lang.name}</div><div class="language-native">${lang.native}</div>`;
-                grid.appendChild(btn);
-            });
-        }
-        modal.classList.add("active");
-    });
-    
-    document.getElementById("settingsBtn")?.addEventListener("click", showSettingsModal);
-    document.querySelector(".modal-close")?.addEventListener("click", () => {
-        document.getElementById("languageModal").classList.remove("active");
-    });
+    document.querySelector(".modal-close")?.addEventListener("click", closeLanguageModal);
     document.querySelector(".modal-close-settings")?.addEventListener("click", closeSettingsModal);
     
     document.getElementById("autoPlayToggle")?.addEventListener("change", saveSettings);
@@ -387,15 +462,17 @@ document.addEventListener("DOMContentLoaded", () => {
     
     setupVoiceInput();
     
+    window.onclick = (event) => {
+        if (event.target === document.getElementById("languageModal")) closeLanguageModal();
+        if (event.target === document.getElementById("settingsModal")) closeSettingsModal();
+    };
+    
     const savedLang = localStorage.getItem("cy30rt_language");
     if (savedLang && LANGUAGES && LANGUAGES[savedLang]) {
         currentLanguage = savedLang;
-        document.getElementById("languageScreen").style.display = "none";
-        document.getElementById("mainApp").classList.add("active");
     }
 });
 
-// Auto-resize textarea
 document.addEventListener("input", function(e) {
     if (e.target.id === "messageInput") {
         e.target.style.height = "auto";
