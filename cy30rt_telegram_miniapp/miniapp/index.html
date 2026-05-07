@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Cy30rt_AI - Cybersecurity Assistant</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#0a0c10">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+</head>
+
+<body>
+    <div class="cyber-grid"></div>
+    <div class="neural-bg"></div>
+
+    <!-- Language Selection Screen -->
+    <div id="languageScreen" class="language-screen active">
+        <div class="language-container">
+            <div class="ai-logo">
+                <div class="ai-icon">🛡️</div>
+                <h1>Cy30rt_AI</h1>
+                <p id="langSubtitle">Choose Your Language</p>
+                <div class="ai-badge">🤖 AI POWERED</div>
+            </div>
+
+            <div class="language-grid" id="languageGrid">
+                <!-- Languages will be injected here -->
+            </div>
+
+            <div class="creator-credit">
+                Created by <strong>Abdulbasid Yakubu (cy30rt)</strong>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main App Screen -->
+    <div id="mainApp" class="main-app">
+        <!-- Header -->
+        <div class="app-header">
+            <div class="header-left">
+                <div class="ai-avatar">🤖</div>
+                <div class="ai-info">
+                    <h2>Cy30rt_AI</h2>
+                    <span class="status-dot"></span>
+                    <span id="statusText" class="status-text">Online</span>
+                </div>
+            </div>
+            <div class="header-right">
+                <button id="languageBtn" class="icon-btn" title="Change Language">
+                    🌐
+                </button>
+                <button id="voiceBtn" class="icon-btn" title="Voice Input">
+                    🎤
+                </button>
+            </div>
+        </div>
+
+        <!-- AI Identity Banner -->
+        <div class="ai-identity">
+            <div class="identity-text">
+                <span class="ai-signature">🧠 NEURAL AI CORE v1.0</span>
+                <span id="creatorText">Created by Abdulbasid Yakubu (cy30rt)</span>
+            </div>
+        </div>
+
+        <!-- Chat Messages Area -->
+        <div class="chat-container" id="chatContainer">
+            <div class="chat-messages" id="chatMessages">
+                <div class="message ai-message">
+                    <div class="message-avatar">🤖</div>
+                    <div class="message-content">
+                        <div class="message-text">
+                            Hello! I'm <strong>Cy30rt_AI</strong>, your cybersecurity AI assistant.<br><br> Created by <strong>Abdulbasid Yakubu (cy30rt)</strong>, I'm here to help you learn ethical hacking, understand vulnerabilities, and master cybersecurity
+                            concepts.
+                            <br><br> How can I help you today?
+                        </div>
+                        <div class="message-time">Just now</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Quick Action Buttons -->
+        <div class="quick-actions" id="quickActions">
+            <button class="action-btn" data-action="learn">📚 Learn</button>
+            <button class="action-btn" data-action="payloads">💉 Payloads</button>
+            <button class="action-btn" data-action="labs">🏴‍☠️ Labs</button>
+            <button class="action-btn" data-action="tutorials">📖 Tutorials</button>
+        </div>
+
+        <!-- Input Area -->
+        <div class="input-area">
+            <div class="input-container">
+                <textarea id="messageInput" rows="1" placeholder="Type a message..."></textarea>
+                <button id="sendBtn" class="send-btn">
+                    <span>➤</span>
+                </button>
+            </div>
+            <div class="input-warning" id="warningText">
+                ⚠️ Practice on authorized systems only
+            </div>
+        </div>
+
+        <!-- Typing Indicator -->
+        <div id="typingIndicator" class="typing-indicator" style="display: none;">
+            <div class="typing-dots">
+                <span></span><span></span><span></span>
+            </div>
+            <span id="typingText">Cy30rt_AI is thinking...</span>
+        </div>
+    </div>
+
+    <!-- Language Switcher Modal -->
+    <div id="languageModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modalTitle">Change Language</h3>
+                <button class="close-modal">&times;</button>
+            </div>
+            <div class="language-grid-small" id="languageModalGrid"></div>
+        </div>
+    </div>
+
+    <script src="languages.js"></script>
+    <script src="app.js"></script>
+</body>
+
+</html>

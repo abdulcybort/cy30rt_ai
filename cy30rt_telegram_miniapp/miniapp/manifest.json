@@ -1,0 +1,21 @@
+{
+    "name": "Cy30rt_AI Cybersecurity Assistant",
+    "short_name": "Cy30rt_AI",
+    "description": "Your AI-Powered Cybersecurity Teaching Assistant",
+    "start_url": "/miniapp/",
+    "display": "standalone",
+    "theme_color": "#0a0c10",
+    "background_color": "#0a0c10",
+    "icons": [{
+            "src": "assets/icons/icon-192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "any maskable"
+        },
+        {
+            "src": "assets/icons/icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png"
+        }
+    ]
+}
