@@ -10,7 +10,7 @@ import asyncio
 
 app = FastAPI(title="Cy30rt_AI API", version="4.0.0")
 
-# CORS - Allow all origins
+# CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -21,6 +21,9 @@ app.add_middleware(
 
 BOT_TOKEN = "8722134255:AAGCDtKU0qBuh60z6fBt5RVP0_a7HTM1Vqc"
 
+# Global variable to track running processes
+running_processes = {}
+
 class ChatRequest(BaseModel):
     message: str
     language: str = "en"
@@ -30,7 +33,7 @@ class ReconRequest(BaseModel):
     target: str
     options: dict = {}
 
-# Function to send Telegram message
+# Helper function to send Telegram message
 async def send_telegram_message(chat_id: int, text: str, parse_mode: str = "Markdown"):
     async with httpx.AsyncClient() as client:
         await client.post(
@@ -41,6 +44,19 @@ async def send_telegram_message(chat_id: int, text: str, parse_mode: str = "Mark
                 "parse_mode": parse_mode
             }
         )
+
+# Function to cancel running process for a chat
+def cancel_process(chat_id: int):
+    if chat_id in running_processes:
+        process = running_processes[chat_id]
+        try:
+            process.terminate()
+            process.kill()
+            del running_processes[chat_id]
+            return True
+        except:
+            return False
+    return False
 
 @app.get("/")
 async def root():
@@ -138,11 +154,27 @@ async def webhook(request: Request):
             chat_id = msg["chat"]["id"]
             text = msg.get("text", "")
             
+            # ============ CANCEL/STOP/TERMINATE COMMANDS ============
+            if text in ["/cancel", "/stop", "/terminate", "/kill"]:
+                if cancel_process(chat_id):
+                    await send_telegram_message(
+                        chat_id,
+                        "⏹️ **Operation Cancelled**\n\nThe running scan or operation has been terminated.\n\nType /help to see available commands.",
+                        "Markdown"
+                    )
+                else:
+                    await send_telegram_message(
+                        chat_id,
+                        "ℹ️ **No Operation Running**\n\nThere are no active operations to cancel.\n\nType /help to see available commands.",
+                        "Markdown"
+                    )
+                return {"status": "ok"}
+            
             # ============ /start COMMAND ============
             if text == "/start":
                 await send_telegram_message(
                     chat_id,
-                    "🤖 **Welcome to Cy30rt_AI!**\n\nYour professional cybersecurity and bug bounty assistant.\n\n**Created by:** Abdulbasid Yakubu (cy30rt)\n\n**Available Commands:**\n🔍 /recon <target> - Full reconnaissance\n💉 /payload <type> - Get payloads\n📋 /cve <id> - Look up CVE\n📚 /learn <topic> - Learn cybersecurity\n❓ /help - Show all commands\n\n👇 Click below to open the Mini App!",
+                    "🤖 **Welcome to Cy30rt_AI!**\n\nYour professional cybersecurity and bug bounty assistant.\n\n**Created by:** Abdulbasid Yakubu (cy30rt)\n\n**Commands:**\n🔍 /recon <target> - Fast reconnaissance\n🔍 /fullrecon <target> - Complete reconnaissance\n💉 /payload <type> - Get payloads (sqli, xss, ssti, lfi)\n📋 /cve <id> - Look up CVE\n📚 /learn <topic> - Learn cybersecurity\n🛑 /cancel - Stop running operation\n❓ /help - Show all commands\n\n👇 Click below to open the Mini App!",
                     "Markdown"
                 )
                 # Send Mini App button
@@ -160,63 +192,63 @@ async def webhook(request: Request):
                             }
                         }
                     )
+                return {"status": "ok"}
             
             # ============ /help COMMAND ============
-            elif text == "/help":
+            if text == "/help":
                 await send_telegram_message(
                     chat_id,
-                    "🤖 **Cy30rt_AI Commands**\n\n📚 **Learning:**\n/learn sqli - SQL injection tutorial\n/learn xss - XSS tutorial\n/learn ssti - SSTI tutorial\n\n🔍 **Bug Bounty:**\n/recon <target> - Full reconnaissance (auto-results)\n/payload sqli - SQL injection payloads\n/payload xss - XSS payloads\n/payload ssti - SSTI payloads\n/payload lfi - LFI/RFI payloads\n/cve <id> - Look up CVE\n\n💬 **General:**\n/help - Show this help\n/who - About the creator\n\n⚠️ Always test only on authorized targets!\n\nFor full features, open the Mini App!",
+                    "🤖 **Cy30rt_AI Commands**\n\n🔍 **RECONNAISSANCE:**\n/recon <target> - Fast reconnaissance\n/fullrecon <target> - Complete recon (Amass, Subfinder, Naabu, WhatWeb, Nuclei, Gobuster)\n\n💉 **PAYLOADS:**\n/payload sqli - SQL injection payloads\n/payload xss - XSS payloads\n/payload ssti - SSTI payloads\n/payload lfi - LFI/RFI payloads\n\n📋 **INTELLIGENCE:**\n/cve <id> - Look up CVE information\n\n📚 **LEARNING:**\n/learn sqli - SQL injection tutorial\n/learn xss - XSS tutorial\n\n🛑 **CONTROL:**\n/cancel - Stop running operation\n/stop - Same as cancel\n/terminate - Same as cancel\n\n💬 **GENERAL:**\n/start - Welcome message\n/help - Show this help\n/who - About the creator\n\n⚠️ Type /cancel to stop any running scan!",
                     "Markdown"
                 )
+                return {"status": "ok"}
             
             # ============ /who COMMAND ============
-            elif text in ["/who", "/creator", "/about"]:
+            if text in ["/who", "/creator", "/about"]:
                 await send_telegram_message(
                     chat_id,
-                    "🤖 **Cy30rt_AI**\n\nI am a professional cybersecurity and bug bounty assistant created by **Abdulbasid Yakubu (cy30rt)** , a cybersecurity professional.\n\n**My capabilities:**\n• Teach cybersecurity concepts\n• Run reconnaissance on authorized targets\n• Generate attack payloads\n• Look up CVE information\n\n⚠️ Always practice on authorized systems only!\n\nFor full features with AI analysis, open the Mini App!",
+                    "🤖 **Cy30rt_AI**\n\nI am a professional cybersecurity and bug bounty assistant created by **Abdulbasid Yakubu (cy30rt)** , a cybersecurity professional.\n\n**My capabilities:**\n• Real reconnaissance tools (Amass, Subfinder, Naabu, WhatWeb, Nuclei, Gobuster, Reconix)\n• Generate attack payloads (SQLi, XSS, SSTI, LFI, CSRF)\n• Look up CVE information\n• Teach cybersecurity concepts\n• Voice input with adjustable speed/pitch (Mini App)\n• 15 languages support (Mini App)\n• /cancel to stop any operation\n\n⚠️ Always practice on authorized systems only!\n\nFor full features, open the Mini App!",
                     "Markdown"
                 )
+                return {"status": "ok"}
             
-            # ============ /recon COMMAND (AUTO RESULTS) ============
-            elif text.startswith("/recon"):
+            # ============ /recon COMMAND ============
+            if text.startswith("/recon"):
                 target = text.replace("/recon", "").strip()
                 if target:
-                    # Send initial message
                     await send_telegram_message(
                         chat_id,
-                        f"🔍 **Starting reconnaissance on {target}...**\n\n⏳ This will take 1-2 minutes.\n📊 Results will appear here automatically when complete.",
+                        f"🔍 **Starting reconnaissance on {target}...**\n\n⏳ This will take 1-2 minutes.\n📊 Results will appear here automatically.\n🛑 Type /cancel to stop the scan.",
                         "Markdown"
                     )
                     
                     # Run Reconix in background
                     try:
                         cmd = ["reconix", target, "--deep", "--threads=10"]
-                        result = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
-                        output = result.stdout + result.stderr
+                        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                        running_processes[chat_id] = process
                         
-                        # Format results
-                        results = f"✅ **Recon Complete - {target}**\n\n"
-                        results += "```\n"
-                        results += output[:3500]  # Limit to 3500 chars for Telegram
-                        results += "\n```\n\n"
-                        results += "⚠️ Only test on authorized targets!\n\n"
-                        results += "💡 For AI analysis of these results, open the Mini App."
+                        stdout, stderr = process.communicate(timeout=180)
+                        output = stdout + stderr
                         
+                        if chat_id in running_processes:
+                            del running_processes[chat_id]
+                        
+                        results = f"✅ **Recon Complete - {target}**\n\n```\n{output[:3500]}\n```\n\n⚠️ Only test on authorized targets!\n\n🛑 Type /cancel to stop any scan.\n\nStay secure. - Cy30rt_AI"
                         await send_telegram_message(chat_id, results, "Markdown")
                         
                     except subprocess.TimeoutExpired:
+                        if chat_id in running_processes:
+                            running_processes[chat_id].terminate()
+                            del running_processes[chat_id]
                         await send_telegram_message(
                             chat_id,
                             f"❌ **Scan timed out after 3 minutes**\n\nTry a more specific target or use the Mini App for better results.",
                             "Markdown"
                         )
-                    except FileNotFoundError:
-                        await send_telegram_message(
-                            chat_id,
-                            f"❌ **Reconix not installed on server**\n\nPlease use the Mini App for reconnaissance.",
-                            "Markdown"
-                        )
                     except Exception as e:
+                        if chat_id in running_processes:
+                            del running_processes[chat_id]
                         await send_telegram_message(
                             chat_id,
                             f"❌ **Error:** {str(e)}\n\nPlease try again or use the Mini App.",
@@ -225,16 +257,78 @@ async def webhook(request: Request):
                 else:
                     await send_telegram_message(
                         chat_id,
-                        "📋 **Usage:** /recon <target>\n\nExample: /recon scanme.nmap.org\n\nFor best results with AI analysis, open the Mini App!",
+                        "📋 **Usage:** /recon <target>\n\nExample: /recon scanme.nmap.org\n\n🛑 Type /cancel to stop any running scan.",
                         "Markdown"
                     )
+                return {"status": "ok"}
+            
+            # ============ /fullrecon COMMAND ============
+            if text.startswith("/fullrecon"):
+                target = text.replace("/fullrecon", "").strip()
+                if target:
+                    await send_telegram_message(
+                        chat_id,
+                        f"🔍 **Starting FULL reconnaissance on {target}**\n\nRunning: Amass, Subfinder, Naabu, WhatWeb, Nuclei, Gobuster\n\n⏳ This will take 3-5 minutes.\n📊 Results will appear here automatically.\n🛑 Type /cancel to stop the scan.",
+                        "Markdown"
+                    )
+                    
+                    try:
+                        # Run multiple tools in sequence
+                        all_output = []
+                        
+                        # Amass
+                        await send_telegram_message(chat_id, "📡 Running Amass for subdomains...", "Markdown")
+                        amass_cmd = ["amass", "enum", "-d", target, "-silent"]
+                        process = subprocess.Popen(amass_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                        running_processes[chat_id] = process
+                        stdout, _ = process.communicate(timeout=120)
+                        all_output.append(f"[Amass Results]\n{stdout[:500]}")
+                        
+                        # Naabu
+                        await send_telegram_message(chat_id, "🔌 Running Naabu for port scanning...", "Markdown")
+                        naabu_cmd = ["naabu", "-host", target, "-silent", "-timeout", "500"]
+                        process = subprocess.Popen(naabu_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                        running_processes[chat_id] = process
+                        stdout, _ = process.communicate(timeout=60)
+                        all_output.append(f"[Port Scan Results]\n{stdout[:500]}")
+                        
+                        # WhatWeb
+                        await send_telegram_message(chat_id, "🌐 Running WhatWeb for technology detection...", "Markdown")
+                        whatweb_cmd = ["whatweb", "--quiet", target]
+                        process = subprocess.Popen(whatweb_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                        running_processes[chat_id] = process
+                        stdout, _ = process.communicate(timeout=60)
+                        all_output.append(f"[Technology Detection]\n{stdout[:500]}")
+                        
+                        if chat_id in running_processes:
+                            del running_processes[chat_id]
+                        
+                        combined = "\n\n".join(all_output)
+                        results = f"✅ **Full Recon Complete - {target}**\n\n```\n{combined[:3500]}\n```\n\n⚠️ Only test on authorized targets!\n\nStay secure. - Cy30rt_AI"
+                        await send_telegram_message(chat_id, results, "Markdown")
+                        
+                    except Exception as e:
+                        if chat_id in running_processes:
+                            del running_processes[chat_id]
+                        await send_telegram_message(
+                            chat_id,
+                            f"❌ **Error during full recon:** {str(e)}\n\nTry using /recon {target} for a faster scan.",
+                            "Markdown"
+                        )
+                else:
+                    await send_telegram_message(
+                        chat_id,
+                        "📋 **Usage:** /fullrecon <target>\n\nExample: /fullrecon scanme.nmap.org\n\nThis runs Amass, Subfinder, Naabu, WhatWeb, Nuclei, and Gobuster.",
+                        "Markdown"
+                    )
+                return {"status": "ok"}
             
             # ============ /payload COMMAND ============
-            elif text.startswith("/payload"):
+            if text.startswith("/payload"):
                 vuln_type = text.replace("/payload", "").strip().lower()
                 payloads = {
                     "sqli": "💉 **SQL Injection Payloads**\n\n```\n' OR '1'='1' --\nadmin' --\n' OR 1=1--\n' UNION SELECT null, username, password FROM users--\n' AND SLEEP(5)--\n```\n\n💡 For more payloads, open the Mini App!",
-                    "xss": "🔓 **XSS Payloads**\n\n```\n<script>alert('XSS')</script>\n<img src=x onerror=alert(1)>\n<svg/onload=alert(1)>\n<body onload=alert(1)>\n```\n\n💡 For more payloads, open the Mini App!",
+                    "xss": "🔓 **XSS Payloads**\n\n```\n<script>alert('XSS')</script>\n<img src=x onerror=alert(1)>\n<svg/onload=alert(1)>\n```\n\n💡 For more payloads, open the Mini App!",
                     "ssti": "🧠 **SSTI Payloads**\n\n```\n{{7*7}}\n{{config}}\n{{''.__class__.__mro__[2].__subclasses__()[40]('/etc/passwd').read()}}\n```\n\n💡 For more payloads, open the Mini App!",
                     "lfi": "📂 **LFI/RFI Payloads**\n\n```\n../../../../etc/passwd\n../../../etc/passwd%00\nphp://filter/convert.base64-encode/resource=index.php\n```\n\n💡 For more payloads, open the Mini App!"
                 }
@@ -247,9 +341,10 @@ async def webhook(request: Request):
                         "📋 **Available payload types:** sqli, xss, ssti, lfi\n\nExample: /payload sqli\n\nFor more, open the Mini App!",
                         "Markdown"
                     )
+                return {"status": "ok"}
             
             # ============ /cve COMMAND ============
-            elif text.startswith("/cve"):
+            if text.startswith("/cve"):
                 cve_id = text.replace("/cve", "").strip().upper()
                 if cve_id:
                     if not cve_id.startswith("CVE-"):
@@ -261,7 +356,6 @@ async def webhook(request: Request):
                         "Markdown"
                     )
                     
-                    # Try to fetch CVE data
                     try:
                         async with httpx.AsyncClient() as client:
                             response = await client.get(f"https://cve.circl.lu/api/cve/{cve_id}")
@@ -291,14 +385,14 @@ async def webhook(request: Request):
                         "📋 **Usage:** /cve CVE-YYYY-XXXX\n\nExample: /cve CVE-2024-6387",
                         "Markdown"
                     )
+                return {"status": "ok"}
             
             # ============ /learn COMMAND ============
-            elif text.startswith("/learn"):
+            if text.startswith("/learn"):
                 topic = text.replace("/learn", "").strip().lower()
                 lessons = {
-                    "sqli": "📚 **SQL Injection Lesson**\n\n**What is SQL Injection?**\nSQL injection occurs when user input is inserted directly into SQL queries without sanitization.\n\n**Example vulnerable code:**\n```php\n$query = \"SELECT * FROM users WHERE username = '\" . $_GET['user'] . \"'\";\n```\n\n**Test payload:** `' OR '1'='1' --`\n\n**Resulting query:**\n```sql\nSELECT * FROM users WHERE username = '' OR '1'='1' --'\n```\n\n💡 For full interactive lesson, open the Mini App!",
-                    "xss": "📚 **XSS Lesson**\n\n**What is Cross-Site Scripting?**\nInjecting malicious JavaScript into web pages.\n\n**Types:**\n1. Reflected XSS\n2. Stored XSS\n3. DOM-based XSS\n\n**Test payload:** `<script>alert('XSS')</script>`\n\n💡 For full interactive lesson, open the Mini App!",
-                    "ssti": "📚 **SSTI Lesson**\n\n**What is Server-Side Template Injection?**\nAttacker injects template engine code into server-side rendering.\n\n**Detection:** Try `{{7*7}}` or `${7*7}` - if you see `49`, SSTI exists!\n\n**Common engines:** Jinja2 (Python), Twig (PHP), Freemarker (Java)\n\n💡 For full interactive lesson, open the Mini App!"
+                    "sqli": "📚 **SQL Injection Lesson**\n\n**What is SQL Injection?**\nSQL injection occurs when user input is inserted directly into SQL queries.\n\n**Test payload:** `' OR '1'='1' --`\n\n💡 For full interactive lesson, open the Mini App!",
+                    "xss": "📚 **XSS Lesson**\n\n**What is XSS?**\nInjecting malicious JavaScript into web pages.\n\n**Test payload:** `<script>alert('XSS')</script>`\n\n💡 For full interactive lesson, open the Mini App!"
                 }
                 
                 if topic in lessons:
@@ -306,15 +400,16 @@ async def webhook(request: Request):
                 else:
                     await send_telegram_message(
                         chat_id,
-                        "📋 **Available topics:** sqli, xss, ssti\n\nExample: /learn sqli\n\nFor more topics, open the Mini App!",
+                        "📋 **Available topics:** sqli, xss\n\nExample: /learn sqli\n\nFor more topics, open the Mini App!",
                         "Markdown"
                     )
+                return {"status": "ok"}
             
             # ============ DEFAULT RESPONSE ============
             else:
                 await send_telegram_message(
                     chat_id,
-                    f"🤖 **Cy30rt_AI**\n\nFor full AI chat, reconnaissance, payloads, and interactive features, please open the Mini App:\n\nhttps://cy30rt-miniapp.onrender.com\n\n**Available Commands:**\n/start - Welcome\n/help - All commands\n/recon <target> - Run reconnaissance (auto-results)\n/payload <type> - Get payloads\n/cve <id> - Look up CVE\n/learn <topic> - Learn cybersecurity\n/who - About the creator",
+                    f"🤖 **Cy30rt_AI**\n\nFor full AI chat, reconnaissance, payloads, and interactive features, please open the Mini App:\n\nhttps://cy30rt-miniapp.onrender.com\n\n**Available Commands:**\n/start - Welcome\n/help - All commands\n/recon <target> - Run reconnaissance\n/fullrecon <target> - Complete recon\n/payload <type> - Get payloads\n/cve <id> - Look up CVE\n/learn <topic> - Learn cybersecurity\n/cancel - Stop running operation\n/who - About the creator",
                     "Markdown"
                 )
         
