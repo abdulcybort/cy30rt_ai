@@ -1,13 +1,12 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from .ai_service import cy30rt_ai
-from .language_service import LANGUAGES
 from pydantic import BaseModel
 import httpx
 
 app = FastAPI(title="Cy30rt_AI API", version="3.0.0")
 
-# CORS - Allow all origins for Telegram Mini App
+# CORS - Allow all origins
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -29,13 +28,12 @@ async def root():
         "name": "Cy30rt_AI",
         "creator": "Abdulbasid Yakubu (cy30rt)",
         "status": "online",
-        "apis": ["DeepSeek", "Cerebras", "Groq", "ContrastAPI"],
         "version": "3.0.0"
     }
 
 @app.post("/api/chat")
 async def chat(request: ChatRequest):
-    """AI chat endpoint - uses DeepSeek as primary"""
+    """AI chat endpoint - returns complete responses"""
     
     async def generate():
         async for chunk in cy30rt_ai.chat(request.message, request.language):
