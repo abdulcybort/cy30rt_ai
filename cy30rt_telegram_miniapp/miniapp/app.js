@@ -1,4 +1,4 @@
-// Cy30rt_AI - Professional Cybersecurity Assistant v3.0
+// Cy30rt_AI - Complete Professional Version
 // Created by Abdulbasid Yakubu (cy30rt)
 
 // ============ GLOBAL VARIABLES ============
@@ -19,6 +19,9 @@ let voiceReadbackEnabled = false;
 // Chat History
 let chatHistory = [];
 let currentSessionId = null;
+
+// API URL
+const API_URL = "https://cy30rt-ai.onrender.com";
 
 // Voice language mapping
 const voiceMap = {
@@ -178,7 +181,6 @@ function clearChatHistory() {
 
 // ============ VOICE RECORDING INDICATOR ============
 function showRecordingStatus() {
-    // Remove existing status if any
     if (recordingStatusDiv) recordingStatusDiv.remove();
     
     recordingStatusDiv = document.createElement("div");
@@ -186,7 +188,6 @@ function showRecordingStatus() {
     recordingStatusDiv.innerHTML = '🎙️ Recording... Speak now';
     document.body.appendChild(recordingStatusDiv);
     
-    // Auto-hide after 10 seconds (safety)
     setTimeout(() => {
         if (recordingStatusDiv) recordingStatusDiv.remove();
     }, 10000);
@@ -199,7 +200,7 @@ function hideRecordingStatus() {
     }
 }
 
-// ============ AUDIO INITIALIZATION ============
+// ============ AUDIO FUNCTIONS ============
 function initAudio() {
     if (audioInitialized) return;
     try {
@@ -212,7 +213,6 @@ function initAudio() {
     }
 }
 
-// ============ TEXT TO SPEECH ============
 async function textToSpeech(text, languageCode) {
     return new Promise((resolve) => {
         if (!window.speechSynthesis) {
@@ -245,6 +245,7 @@ async function sendMessage() {
     
     if (!message) return;
     
+    // Add user message to UI and history
     addUserMessageToContainer(message);
     saveMessageToHistory('user', message, currentLanguage);
     
@@ -260,14 +261,23 @@ async function sendMessage() {
     showTypingIndicator();
     
     try {
-        const response = await fetch(`https://cy30rt-ai.onrender.com/api/chat`, {
+        console.log("Sending to:", `${API_URL}/api/chat`);
+        
+        const response = await fetch(`${API_URL}/api/chat`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { 
+                "Content-Type": "application/json",
+                "Accept": "text/event-stream"
+            },
             body: JSON.stringify({
                 message: message,
                 language: currentLanguage || "en"
             })
         });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
         
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
@@ -289,6 +299,7 @@ async function sendMessage() {
         
     } catch (error) {
         hideTypingIndicator();
+        console.error("Send error:", error);
         addErrorMessage(error.message);
     }
 }
@@ -349,13 +360,6 @@ async function finishStreamingMessage(fullText) {
     streamingMessageDiv = null;
 }
 
-function formatMessageText(text) {
-    text = text.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
-    text = text.replace(/`([^`]+)`/g, '<code>$1</code>');
-    text = text.replace(/\n/g, '<br>');
-    return text;
-}
-
 function addAudioControls(messageDiv, text, language) {
     const existing = messageDiv.querySelector(".audio-controls");
     if (existing) existing.remove();
@@ -414,10 +418,6 @@ function addAudioControls(messageDiv, text, language) {
     if (contentDiv) contentDiv.appendChild(controlsDiv);
 }
 
-function newChat() {
-    clearChatHistory();
-}
-
 function addSystemMessage(text) {
     const container = document.getElementById("chatMessages");
     const sysDiv = document.createElement("div");
@@ -444,7 +444,7 @@ function addErrorMessage(error) {
                 <span class="message-sender">System</span>
                 <span class="message-time">${new Date().toLocaleTimeString()}</span>
             </div>
-            <div class="message-text" style="color: #ef4444;">Error: ${escapeHtml(error)}</div>
+            <div class="message-text" style="color: #ef4444;">Error: ${escapeHtml(error)}<br><br>Check console for details.</div>
         </div>
     `;
     container.appendChild(errorDiv);
@@ -471,6 +471,18 @@ function escapeHtml(text) {
     const div = document.createElement("div");
     div.textContent = text;
     return div.innerHTML;
+}
+
+function formatMessageText(text) {
+    text = text.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
+    text = text.replace(/`([^`]+)`/g, '<code>$1</code>');
+    text = text.replace(/\n/g, '<br>');
+    return text;
+}
+
+// ============ NEW CHAT ============
+function newChat() {
+    clearChatHistory();
 }
 
 // ============ LANGUAGE FUNCTIONS ============
@@ -551,7 +563,7 @@ function saveSettings() {
     if (pitchVal) pitchVal.textContent = voicePitch === 1.0 ? "Normal" : `${voicePitch.toFixed(1)}x`;
 }
 
-// ============ VOICE INPUT WITH RECORDING INDICATOR ============
+// ============ VOICE INPUT ============
 function setupVoiceInput() {
     const voiceBtn = document.getElementById("voiceBtn");
     if (!voiceBtn) return;
@@ -596,51 +608,33 @@ function setupVoiceInput() {
 
 // ============ INITIALIZE ============
 document.addEventListener("DOMContentLoaded", () => {
+    console.log("Cy30rt_AI Mini App Loaded");
+    console.log("API URL:", API_URL);
+    
     initChatHistory();
     loadSettings();
     
-    const sendBtn = document.getElementById("sendBtn");
-    if (sendBtn) sendBtn.addEventListener("click", sendMessage);
+    // Setup event listeners
+    document.getElementById("sendBtn")?.addEventListener("click", sendMessage);
+    document.getElementById("newChatBtn")?.addEventListener("click", newChat);
+    document.getElementById("clearHistoryBtn")?.addEventListener("click", clearChatHistory);
+    document.getElementById("languageBtn")?.addEventListener("click", showLanguageModal);
+    document.getElementById("settingsBtn")?.addEventListener("click", showSettingsModal);
     
-    const newChatBtn = document.getElementById("newChatBtn");
-    if (newChatBtn) newChatBtn.addEventListener("click", newChat);
+    document.getElementById("messageInput")?.addEventListener("keypress", (e) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+        }
+    });
     
-    const clearHistoryBtn = document.getElementById("clearHistoryBtn");
-    if (clearHistoryBtn) clearHistoryBtn.addEventListener("click", clearChatHistory);
+    document.querySelector(".modal-close")?.addEventListener("click", closeLanguageModal);
+    document.querySelector(".modal-close-settings")?.addEventListener("click", closeSettingsModal);
     
-    const languageBtn = document.getElementById("languageBtn");
-    if (languageBtn) languageBtn.addEventListener("click", showLanguageModal);
-    
-    const settingsBtn = document.getElementById("settingsBtn");
-    if (settingsBtn) settingsBtn.addEventListener("click", showSettingsModal);
-    
-    const messageInput = document.getElementById("messageInput");
-    if (messageInput) {
-        messageInput.addEventListener("keypress", (e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                sendMessage();
-            }
-        });
-    }
-    
-    const modalClose = document.querySelector(".modal-close");
-    if (modalClose) modalClose.addEventListener("click", closeLanguageModal);
-    
-    const settingsClose = document.querySelector(".modal-close-settings");
-    if (settingsClose) settingsClose.addEventListener("click", closeSettingsModal);
-    
-    const autoToggle = document.getElementById("autoPlayToggle");
-    if (autoToggle) autoToggle.addEventListener("change", saveSettings);
-    
-    const readbackToggle = document.getElementById("voiceReadbackToggle");
-    if (readbackToggle) readbackToggle.addEventListener("change", saveSettings);
-    
-    const speedSlider = document.getElementById("voiceSpeed");
-    if (speedSlider) speedSlider.addEventListener("input", saveSettings);
-    
-    const pitchSlider = document.getElementById("voicePitch");
-    if (pitchSlider) pitchSlider.addEventListener("input", saveSettings);
+    document.getElementById("autoPlayToggle")?.addEventListener("change", saveSettings);
+    document.getElementById("voiceReadbackToggle")?.addEventListener("change", saveSettings);
+    document.getElementById("voiceSpeed")?.addEventListener("input", saveSettings);
+    document.getElementById("voicePitch")?.addEventListener("input", saveSettings);
     
     setupVoiceInput();
     
