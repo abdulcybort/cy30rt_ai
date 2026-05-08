@@ -254,6 +254,82 @@ body {
     50% { opacity: 1; transform: scale(1.05); }
 }
 
+/* ============ VOICE RECORDING INDICATOR ============ */
+.voice-input-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 8px;
+    border-radius: 50%;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+}
+
+.voice-input-btn:hover {
+    background: rgba(59,130,246,0.1);
+    color: var(--accent-primary);
+}
+
+.voice-input-btn.recording {
+    background: rgba(239,68,68,0.15);
+    color: #ef4444;
+    animation: voicePulse 1.2s ease-in-out infinite;
+}
+
+@keyframes voicePulse {
+    0%, 100% {
+        box-shadow: 0 0 0 0 rgba(239,68,68,0.4);
+        background: rgba(239,68,68,0.15);
+    }
+    50% {
+        box-shadow: 0 0 0 8px rgba(239,68,68,0);
+        background: rgba(239,68,68,0.25);
+    }
+}
+
+/* Recording wave animation */
+.voice-input-btn.recording svg {
+    animation: waveBoost 0.8s ease-in-out infinite;
+}
+
+@keyframes waveBoost {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.2); }
+}
+
+/* Recording status text (optional) */
+.recording-status {
+    position: fixed;
+    bottom: 100px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(239,68,68,0.9);
+    color: white;
+    padding: 6px 16px;
+    border-radius: 30px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    z-index: 1000;
+    backdrop-filter: blur(10px);
+    animation: fadeInUp 0.3s ease;
+    pointer-events: none;
+}
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateX(-50%) translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+    }
+}
+
 /* Small Robot Icon for Nav Bar */
 .robot-icon-small {
     position: relative;
