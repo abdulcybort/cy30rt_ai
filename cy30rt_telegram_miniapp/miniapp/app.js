@@ -1,4 +1,4 @@
-// Cy30rt_AI - Professional Cybersecurity Assistant v2
+// Cy30rt_AI - Professional Cybersecurity Assistant v3.0
 // Created by Abdulbasid Yakubu (cy30rt)
 
 // ============ GLOBAL VARIABLES ============
@@ -7,12 +7,18 @@ let currentResponseText = "";
 let currentLanguage = "en";
 let currentMessageDiv = null;
 let audioInitialized = false;
+let streamingMessageDiv = null;
+let recordingStatusDiv = null;
 
 // Voice settings
 let voiceSpeed = 1.0;
 let voicePitch = 1.0;
 let autoPlayEnabled = false;
 let voiceReadbackEnabled = false;
+
+// Chat History
+let chatHistory = [];
+let currentSessionId = null;
 
 // Voice language mapping
 const voiceMap = {
@@ -22,6 +28,176 @@ const voiceMap = {
     'zh': 'zh-CN', 'ja': 'ja-JP', 'ko': 'ko-KR',
     'tr': 'tr-TR', 'fa': 'fa-IR', 'ur': 'ur-PK'
 };
+
+// ============ CHAT HISTORY FUNCTIONS ============
+function initChatHistory() {
+    const savedHistory = localStorage.getItem("cy30rt_chat_history");
+    if (savedHistory) {
+        try {
+            chatHistory = JSON.parse(savedHistory);
+        } catch(e) { chatHistory = []; }
+    }
+    
+    currentSessionId = localStorage.getItem("cy30rt_session_id");
+    if (!currentSessionId) {
+        currentSessionId = 'session_' + Date.now();
+        localStorage.setItem("cy30rt_session_id", currentSessionId);
+    }
+    
+    loadMessagesForSession();
+}
+
+function saveMessageToHistory(role, content, language) {
+    const message = {
+        id: Date.now(),
+        sessionId: currentSessionId,
+        role: role,
+        content: content,
+        language: language,
+        timestamp: new Date().toISOString()
+    };
+    chatHistory.push(message);
+    
+    if (chatHistory.length > 500) {
+        chatHistory = chatHistory.slice(-500);
+    }
+    
+    localStorage.setItem("cy30rt_chat_history", JSON.stringify(chatHistory));
+}
+
+function loadMessagesForSession() {
+    const sessionMessages = chatHistory.filter(m => m.sessionId === currentSessionId);
+    const container = document.getElementById("chatMessages");
+    
+    if (sessionMessages.length === 0) {
+        addWelcomeMessage();
+        return;
+    }
+    
+    container.innerHTML = '';
+    sessionMessages.forEach(msg => {
+        if (msg.role === 'user') {
+            addUserMessageToContainer(msg.content, msg.timestamp);
+        } else if (msg.role === 'ai') {
+            addAIMessageToContainer(msg.content, msg.timestamp);
+        }
+    });
+    scrollToBottom();
+}
+
+function addWelcomeMessage() {
+    const container = document.getElementById("chatMessages");
+    const welcomeDiv = document.createElement("div");
+    welcomeDiv.className = "message ai";
+    welcomeDiv.innerHTML = `
+        <div class="message-avatar">🤖</div>
+        <div class="message-content message-box">
+            <div class="message-header">
+                <span class="message-sender">Cy30rt_AI</span>
+                <span class="message-time">Just now</span>
+            </div>
+            <div class="message-text welcome-text">
+                <div style="font-size: 1.1rem; font-weight: 600; margin-bottom: 12px; background: linear-gradient(135deg, #3b82f6, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
+                    Cy30rt_AI · Cybersecurity Intelligence
+                </div>
+                <div style="margin-bottom: 16px; line-height: 1.6;">
+                    Your professional AI assistant for security research, vulnerability analysis, and threat intelligence.
+                </div>
+                <div style="background: rgba(59,130,246,0.05); border-radius: 12px; padding: 14px; margin: 12px 0;">
+                    <div style="font-weight: 500; margin-bottom: 8px; color: #3b82f6;">⚡ Capabilities</div>
+                    <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                        <span style="background: rgba(59,130,246,0.1); padding: 3px 10px; border-radius: 15px; font-size: 0.75rem;">CVE Analysis</span>
+                        <span style="background: rgba(59,130,246,0.1); padding: 3px 10px; border-radius: 15px; font-size: 0.75rem;">Domain Recon</span>
+                        <span style="background: rgba(59,130,246,0.1); padding: 3px 10px; border-radius: 15px; font-size: 0.75rem;">IP Intelligence</span>
+                        <span style="background: rgba(59,130,246,0.1); padding: 3px 10px; border-radius: 15px; font-size: 0.75rem;">Payload References</span>
+                        <span style="background: rgba(59,130,246,0.1); padding: 3px 10px; border-radius: 15px; font-size: 0.75rem;">15 Languages</span>
+                        <span style="background: rgba(59,130,246,0.1); padding: 3px 10px; border-radius: 15px; font-size: 0.75rem;">Voice Interaction</span>
+                    </div>
+                </div>
+                <div style="color: #9ca3af; font-size: 0.85rem; border-top: 1px solid #2a2a35; padding-top: 12px; margin-top: 8px;">
+                    Developed by <strong style="color: #3b82f6;">Abdulbasid Yakubu (cy30rt)</strong>
+                </div>
+            </div>
+        </div>
+    `;
+    container.appendChild(welcomeDiv);
+}
+
+function addUserMessageToContainer(text, timestamp = null) {
+    const container = document.getElementById("chatMessages");
+    const messageDiv = document.createElement("div");
+    messageDiv.className = "message user";
+    const timeStr = timestamp ? new Date(timestamp).toLocaleTimeString() : new Date().toLocaleTimeString();
+    messageDiv.innerHTML = `
+        <div class="message-avatar">U</div>
+        <div class="message-content message-box user-box">
+            <div class="message-header">
+                <span class="message-sender">You</span>
+                <span class="message-time">${timeStr}</span>
+            </div>
+            <div class="message-text">${escapeHtml(text)}</div>
+        </div>
+    `;
+    container.appendChild(messageDiv);
+    scrollToBottom();
+}
+
+function addAIMessageToContainer(text, timestamp = null) {
+    const container = document.getElementById("chatMessages");
+    const messageDiv = document.createElement("div");
+    messageDiv.className = "message ai";
+    const timeStr = timestamp ? new Date(timestamp).toLocaleTimeString() : new Date().toLocaleTimeString();
+    messageDiv.innerHTML = `
+        <div class="message-avatar">🤖</div>
+        <div class="message-content message-box">
+            <div class="message-header">
+                <span class="message-sender">Cy30rt_AI</span>
+                <span class="message-time">${timeStr}</span>
+            </div>
+            <div class="message-text">${formatMessageText(escapeHtml(text))}</div>
+        </div>
+    `;
+    container.appendChild(messageDiv);
+    scrollToBottom();
+}
+
+function clearChatHistory() {
+    if (confirm("Clear all chat history? This cannot be undone.")) {
+        chatHistory = chatHistory.filter(m => m.sessionId !== currentSessionId);
+        localStorage.setItem("cy30rt_chat_history", JSON.stringify(chatHistory));
+        
+        const container = document.getElementById("chatMessages");
+        container.innerHTML = '';
+        addWelcomeMessage();
+        addSystemMessage("Chat history cleared. New conversation started.");
+        
+        currentMessageDiv = null;
+        currentResponseText = "";
+    }
+}
+
+// ============ VOICE RECORDING INDICATOR ============
+function showRecordingStatus() {
+    // Remove existing status if any
+    if (recordingStatusDiv) recordingStatusDiv.remove();
+    
+    recordingStatusDiv = document.createElement("div");
+    recordingStatusDiv.className = "recording-status";
+    recordingStatusDiv.innerHTML = '🎙️ Recording... Speak now';
+    document.body.appendChild(recordingStatusDiv);
+    
+    // Auto-hide after 10 seconds (safety)
+    setTimeout(() => {
+        if (recordingStatusDiv) recordingStatusDiv.remove();
+    }, 10000);
+}
+
+function hideRecordingStatus() {
+    if (recordingStatusDiv) {
+        recordingStatusDiv.remove();
+        recordingStatusDiv = null;
+    }
+}
 
 // ============ AUDIO INITIALIZATION ============
 function initAudio() {
@@ -36,7 +212,7 @@ function initAudio() {
     }
 }
 
-// ============ TEXT TO SPEECH (FIXED) ============
+// ============ TEXT TO SPEECH ============
 async function textToSpeech(text, languageCode) {
     return new Promise((resolve) => {
         if (!window.speechSynthesis) {
@@ -69,7 +245,9 @@ async function sendMessage() {
     
     if (!message) return;
     
-    addUserMessage(message);
+    addUserMessageToContainer(message);
+    saveMessageToHistory('user', message, currentLanguage);
+    
     input.value = "";
     input.style.height = "auto";
     
@@ -97,14 +275,17 @@ async function sendMessage() {
         hideTypingIndicator();
         startNewAIMessage();
         
+        let fullResponse = "";
+        
         while (true) {
             const { done, value } = await reader.read();
             if (done) break;
             const chunk = decoder.decode(value);
-            appendToCurrentMessage(chunk);
+            fullResponse += chunk;
+            updateStreamingMessage(fullResponse);
         }
         
-        finishCurrentMessage();
+        await finishStreamingMessage(fullResponse);
         
     } catch (error) {
         hideTypingIndicator();
@@ -112,48 +293,60 @@ async function sendMessage() {
     }
 }
 
-function addUserMessage(text) {
-    const container = document.getElementById("chatMessages");
-    const messageDiv = document.createElement("div");
-    messageDiv.className = "message user";
-    messageDiv.innerHTML = `
-        <div class="message-avatar">U</div>
-        <div class="message-content">
-            <div class="message-header">
-                <span class="message-sender">You</span>
-                <span class="message-time">${new Date().toLocaleTimeString()}</span>
-            </div>
-            <div class="message-text">${escapeHtml(text)}</div>
-        </div>
-    `;
-    container.appendChild(messageDiv);
-    scrollToBottom();
-}
-
 function startNewAIMessage() {
     const container = document.getElementById("chatMessages");
-    currentMessageDiv = document.createElement("div");
-    currentMessageDiv.className = "message ai";
-    currentMessageDiv.innerHTML = `
-        <div class="message-avatar">AI</div>
-        <div class="message-content">
+    streamingMessageDiv = document.createElement("div");
+    streamingMessageDiv.className = "message ai";
+    streamingMessageDiv.innerHTML = `
+        <div class="message-avatar">🤖</div>
+        <div class="message-content message-box streaming-box">
             <div class="message-header">
                 <span class="message-sender">Cy30rt_AI</span>
-                <span class="message-time">Streaming...</span>
+                <span class="message-time streaming">Typing...</span>
             </div>
-            <div class="message-text" id="streamingText"></div>
+            <div class="message-text streaming-text"></div>
+            <span class="typing-cursor"></span>
         </div>
     `;
-    container.appendChild(currentMessageDiv);
-    currentResponseText = "";
+    container.appendChild(streamingMessageDiv);
     scrollToBottom();
 }
 
-function appendToCurrentMessage(chunk) {
-    currentResponseText += chunk;
-    const textDiv = currentMessageDiv.querySelector(".message-text");
-    textDiv.innerHTML = formatMessageText(escapeHtml(currentResponseText));
+function updateStreamingMessage(text) {
+    if (!streamingMessageDiv) return;
+    const textDiv = streamingMessageDiv.querySelector(".message-text");
+    if (textDiv) {
+        textDiv.innerHTML = formatMessageText(escapeHtml(text));
+    }
     scrollToBottom();
+}
+
+async function finishStreamingMessage(fullText) {
+    if (!streamingMessageDiv) return;
+    
+    const timeSpan = streamingMessageDiv.querySelector(".message-time");
+    if (timeSpan) {
+        timeSpan.textContent = new Date().toLocaleTimeString();
+        timeSpan.classList.remove("streaming");
+    }
+    
+    const cursor = streamingMessageDiv.querySelector(".typing-cursor");
+    if (cursor) cursor.remove();
+    
+    const box = streamingMessageDiv.querySelector(".message-content");
+    if (box) box.classList.remove("streaming-box");
+    
+    currentMessageDiv = streamingMessageDiv;
+    currentResponseText = fullText;
+    
+    saveMessageToHistory('ai', fullText, currentLanguage);
+    addAudioControls(currentMessageDiv, fullText, currentLanguage);
+    
+    if (autoPlayEnabled) {
+        setTimeout(() => textToSpeech(fullText, currentLanguage), 300);
+    }
+    
+    streamingMessageDiv = null;
 }
 
 function formatMessageText(text) {
@@ -161,21 +354,6 @@ function formatMessageText(text) {
     text = text.replace(/`([^`]+)`/g, '<code>$1</code>');
     text = text.replace(/\n/g, '<br>');
     return text;
-}
-
-function finishCurrentMessage() {
-    if (currentMessageDiv) {
-        const timeSpan = currentMessageDiv.querySelector(".message-time");
-        if (timeSpan) timeSpan.textContent = new Date().toLocaleTimeString();
-        
-        addAudioControls(currentMessageDiv, currentResponseText, currentLanguage);
-        
-        if (autoPlayEnabled) {
-            setTimeout(() => textToSpeech(currentResponseText, currentLanguage), 300);
-        }
-    }
-    currentMessageDiv = null;
-    currentResponseText = "";
 }
 
 function addAudioControls(messageDiv, text, language) {
@@ -187,11 +365,11 @@ function addAudioControls(messageDiv, text, language) {
     
     const playBtn = document.createElement("button");
     playBtn.className = "audio-btn";
-    playBtn.textContent = "Play Audio";
+    playBtn.textContent = "🔊 Play Audio";
     
     const stopBtn = document.createElement("button");
     stopBtn.className = "audio-btn";
-    stopBtn.textContent = "Stop";
+    stopBtn.textContent = "⏹️ Stop";
     
     let isPlaying = false;
     
@@ -201,22 +379,22 @@ function addAudioControls(messageDiv, text, language) {
         
         if (isPlaying) {
             window.speechSynthesis.cancel();
-            playBtn.textContent = "Play Audio";
+            playBtn.textContent = "🔊 Play Audio";
             isPlaying = false;
             return;
         }
         
-        playBtn.textContent = "Playing...";
+        playBtn.textContent = "🔴 Playing...";
         isPlaying = true;
         
         try {
             await textToSpeech(text, language);
-            playBtn.textContent = "Play Audio";
+            playBtn.textContent = "🔊 Play Again";
             isPlaying = false;
         } catch {
-            playBtn.textContent = "Retry";
+            playBtn.textContent = "🔊 Retry";
             setTimeout(() => {
-                playBtn.textContent = "Play Audio";
+                playBtn.textContent = "🔊 Play Audio";
                 isPlaying = false;
             }, 2000);
         }
@@ -225,7 +403,7 @@ function addAudioControls(messageDiv, text, language) {
     stopBtn.onclick = (e) => {
         e.stopPropagation();
         window.speechSynthesis.cancel();
-        playBtn.textContent = "Play Audio";
+        playBtn.textContent = "🔊 Play Audio";
         isPlaying = false;
     };
     
@@ -236,40 +414,8 @@ function addAudioControls(messageDiv, text, language) {
     if (contentDiv) contentDiv.appendChild(controlsDiv);
 }
 
-// ============ NEW CHAT BUTTON ============
 function newChat() {
-    const msgCount = document.querySelectorAll('.message').length;
-    if (msgCount > 2) {
-        if (confirm("Start a new conversation? Current chat will be cleared.")) {
-            clearAllMessages();
-        }
-    } else {
-        clearAllMessages();
-    }
-}
-
-function clearAllMessages() {
-    const container = document.getElementById("chatMessages");
-    container.innerHTML = '';
-    
-    const welcomeDiv = document.createElement("div");
-    welcomeDiv.className = "message ai";
-    welcomeDiv.innerHTML = `
-        <div class="message-avatar">AI</div>
-        <div class="message-content">
-            <div class="message-header">
-                <span class="message-sender">Cy30rt_AI</span>
-                <span class="message-time">Just now</span>
-            </div>
-            <div class="message-text">New conversation started. How can I assist you with cybersecurity today?</div>
-        </div>
-    `;
-    container.appendChild(welcomeDiv);
-    
-    currentMessageDiv = null;
-    currentResponseText = "";
-    addSystemMessage("Conversation reset. Previous context cleared.");
-    scrollToBottom();
+    clearChatHistory();
 }
 
 function addSystemMessage(text) {
@@ -277,8 +423,10 @@ function addSystemMessage(text) {
     const sysDiv = document.createElement("div");
     sysDiv.className = "message system";
     sysDiv.innerHTML = `
-        <div class="message-content">
-            <div class="message-text" style="background: var(--bg-tertiary); text-align: center; font-size: 0.8rem;">🌐 ${escapeHtml(text)}</div>
+        <div class="message-content system-box">
+            <div class="message-text" style="background: rgba(59,130,246,0.1); text-align: center; font-size: 0.8rem; border-left-color: #3b82f6;">
+                🌐 ${escapeHtml(text)}
+            </div>
         </div>
     `;
     container.appendChild(sysDiv);
@@ -290,8 +438,8 @@ function addErrorMessage(error) {
     const errorDiv = document.createElement("div");
     errorDiv.className = "message ai";
     errorDiv.innerHTML = `
-        <div class="message-avatar">!</div>
-        <div class="message-content">
+        <div class="message-avatar">⚠️</div>
+        <div class="message-content message-box error-box">
             <div class="message-header">
                 <span class="message-sender">System</span>
                 <span class="message-time">${new Date().toLocaleTimeString()}</span>
@@ -325,7 +473,7 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
-// ============ LANGUAGE ============
+// ============ LANGUAGE FUNCTIONS ============
 function changeLanguage(langCode) {
     currentLanguage = langCode;
     localStorage.setItem("cy30rt_language", langCode);
@@ -356,7 +504,7 @@ function closeLanguageModal() {
     if (modal) modal.classList.remove("active");
 }
 
-// ============ SETTINGS ============
+// ============ SETTINGS FUNCTIONS ============
 function showSettingsModal() {
     document.getElementById("settingsModal").classList.add("active");
 }
@@ -403,7 +551,7 @@ function saveSettings() {
     if (pitchVal) pitchVal.textContent = voicePitch === 1.0 ? "Normal" : `${voicePitch.toFixed(1)}x`;
 }
 
-// ============ VOICE INPUT ============
+// ============ VOICE INPUT WITH RECORDING INDICATOR ============
 function setupVoiceInput() {
     const voiceBtn = document.getElementById("voiceBtn");
     if (!voiceBtn) return;
@@ -411,6 +559,7 @@ function setupVoiceInput() {
     const SpeechRecognition = window.webkitSpeechRecognition || window.SpeechRecognition;
     if (!SpeechRecognition) {
         voiceBtn.style.opacity = "0.5";
+        voiceBtn.title = "Voice not supported in this browser";
         return;
     }
     
@@ -422,53 +571,88 @@ function setupVoiceInput() {
         initAudio();
         recognition.lang = currentLanguage === "ar" ? "ar-SA" : "en-US";
         recognition.start();
-        voiceBtn.style.opacity = "0.6";
+        voiceBtn.classList.add("recording");
+        showRecordingStatus();
     };
     
     recognition.onresult = (event) => {
         const text = event.results[0][0].transcript;
         document.getElementById("messageInput").value = text;
         sendMessage();
-        voiceBtn.style.opacity = "1";
+        voiceBtn.classList.remove("recording");
+        hideRecordingStatus();
     };
     
-    recognition.onerror = () => { voiceBtn.style.opacity = "1"; };
-    recognition.onend = () => { voiceBtn.style.opacity = "1"; };
+    recognition.onerror = () => {
+        voiceBtn.classList.remove("recording");
+        hideRecordingStatus();
+    };
+    
+    recognition.onend = () => {
+        voiceBtn.classList.remove("recording");
+        hideRecordingStatus();
+    };
 }
 
 // ============ INITIALIZE ============
 document.addEventListener("DOMContentLoaded", () => {
+    initChatHistory();
     loadSettings();
     
-    document.getElementById("sendBtn")?.addEventListener("click", sendMessage);
-    document.getElementById("newChatBtn")?.addEventListener("click", newChat);
-    document.getElementById("languageBtn")?.addEventListener("click", showLanguageModal);
-    document.getElementById("settingsBtn")?.addEventListener("click", showSettingsModal);
+    const sendBtn = document.getElementById("sendBtn");
+    if (sendBtn) sendBtn.addEventListener("click", sendMessage);
     
-    document.getElementById("messageInput")?.addEventListener("keypress", (e) => {
-        if (e.key === "Enter" && !e.shiftKey) {
-            e.preventDefault();
-            sendMessage();
-        }
-    });
+    const newChatBtn = document.getElementById("newChatBtn");
+    if (newChatBtn) newChatBtn.addEventListener("click", newChat);
     
-    document.querySelector(".modal-close")?.addEventListener("click", closeLanguageModal);
-    document.querySelector(".modal-close-settings")?.addEventListener("click", closeSettingsModal);
+    const clearHistoryBtn = document.getElementById("clearHistoryBtn");
+    if (clearHistoryBtn) clearHistoryBtn.addEventListener("click", clearChatHistory);
     
-    document.getElementById("autoPlayToggle")?.addEventListener("change", saveSettings);
-    document.getElementById("voiceReadbackToggle")?.addEventListener("change", saveSettings);
-    document.getElementById("voiceSpeed")?.addEventListener("input", saveSettings);
-    document.getElementById("voicePitch")?.addEventListener("input", saveSettings);
+    const languageBtn = document.getElementById("languageBtn");
+    if (languageBtn) languageBtn.addEventListener("click", showLanguageModal);
+    
+    const settingsBtn = document.getElementById("settingsBtn");
+    if (settingsBtn) settingsBtn.addEventListener("click", showSettingsModal);
+    
+    const messageInput = document.getElementById("messageInput");
+    if (messageInput) {
+        messageInput.addEventListener("keypress", (e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+    }
+    
+    const modalClose = document.querySelector(".modal-close");
+    if (modalClose) modalClose.addEventListener("click", closeLanguageModal);
+    
+    const settingsClose = document.querySelector(".modal-close-settings");
+    if (settingsClose) settingsClose.addEventListener("click", closeSettingsModal);
+    
+    const autoToggle = document.getElementById("autoPlayToggle");
+    if (autoToggle) autoToggle.addEventListener("change", saveSettings);
+    
+    const readbackToggle = document.getElementById("voiceReadbackToggle");
+    if (readbackToggle) readbackToggle.addEventListener("change", saveSettings);
+    
+    const speedSlider = document.getElementById("voiceSpeed");
+    if (speedSlider) speedSlider.addEventListener("input", saveSettings);
+    
+    const pitchSlider = document.getElementById("voicePitch");
+    if (pitchSlider) pitchSlider.addEventListener("input", saveSettings);
     
     setupVoiceInput();
     
     window.onclick = (event) => {
-        if (event.target === document.getElementById("languageModal")) closeLanguageModal();
-        if (event.target === document.getElementById("settingsModal")) closeSettingsModal();
+        const langModal = document.getElementById("languageModal");
+        const settingsModal = document.getElementById("settingsModal");
+        if (event.target === langModal) closeLanguageModal();
+        if (event.target === settingsModal) closeSettingsModal();
     };
     
     const savedLang = localStorage.getItem("cy30rt_language");
-    if (savedLang && LANGUAGES && LANGUAGES[savedLang]) {
+    if (savedLang && typeof LANGUAGES !== 'undefined' && LANGUAGES[savedLang]) {
         currentLanguage = savedLang;
     }
 });
