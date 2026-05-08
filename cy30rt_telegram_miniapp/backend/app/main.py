@@ -198,7 +198,7 @@ async def webhook(request: Request):
             if text == "/help":
                 await send_telegram_message(
                     chat_id,
-                    "🤖 **Cy30rt_AI Commands**\n\n🔍 **RECONNAISSANCE:**\n/recon <target> - Fast reconnaissance\n/fullrecon <target> - Complete recon (Amass, Subfinder, Naabu, WhatWeb, Nuclei, Gobuster)\n\n💉 **PAYLOADS:**\n/payload sqli - SQL injection payloads\n/payload xss - XSS payloads\n/payload ssti - SSTI payloads\n/payload lfi - LFI/RFI payloads\n\n📋 **INTELLIGENCE:**\n/cve <id> - Look up CVE information\n\n📚 **LEARNING:**\n/learn sqli - SQL injection tutorial\n/learn xss - XSS tutorial\n\n🛑 **CONTROL:**\n/cancel - Stop running operation\n/stop - Same as cancel\n/terminate - Same as cancel\n\n💬 **GENERAL:**\n/start - Welcome message\n/help - Show this help\n/who - About the creator\n\n⚠️ Type /cancel to stop any running scan!",
+                    "🤖 **Cy30rt_AI Commands**\n\n🔍 **RECONNAISSANCE:**\n/recon <target> - Fast reconnaissance\n/fullrecon <target> - Complete recon\n\n💉 **PAYLOADS:**\n/payload sqli - SQL injection payloads\n/payload xss - XSS payloads\n/payload ssti - SSTI payloads\n/payload lfi - LFI/RFI payloads\n\n📋 **INTELLIGENCE:**\n/cve <id> - Look up CVE information\n\n📚 **LEARNING:**\n/learn sqli - SQL injection tutorial\n/learn xss - XSS tutorial\n\n🛑 **CONTROL:**\n/cancel - Stop running operation\n\n💬 **GENERAL:**\n/start - Welcome message\n/help - Show this help\n/who - About the creator\n\n⚠️ Type /cancel to stop any running scan!\n\n💡 **You can also just type a question like 'What is SQL injection?' and I'll answer!**",
                     "Markdown"
                 )
                 return {"status": "ok"}
@@ -207,7 +207,7 @@ async def webhook(request: Request):
             if text in ["/who", "/creator", "/about"]:
                 await send_telegram_message(
                     chat_id,
-                    "🤖 **Cy30rt_AI**\n\nI am a professional cybersecurity and bug bounty assistant created by **Abdulbasid Yakubu (cy30rt)** , a cybersecurity professional.\n\n**My capabilities:**\n• Real reconnaissance tools (Amass, Subfinder, Naabu, WhatWeb, Nuclei, Gobuster, Reconix)\n• Generate attack payloads (SQLi, XSS, SSTI, LFI, CSRF)\n• Look up CVE information\n• Teach cybersecurity concepts\n• Voice input with adjustable speed/pitch (Mini App)\n• 15 languages support (Mini App)\n• /cancel to stop any operation\n\n⚠️ Always practice on authorized systems only!\n\nFor full features, open the Mini App!",
+                    "🤖 **Cy30rt_AI**\n\nI am a professional cybersecurity and bug bounty assistant created by **Abdulbasid Yakubu (cy30rt)** , a cybersecurity professional.\n\n**My capabilities:**\n• Real reconnaissance tools\n• Generate attack payloads (SQLi, XSS, SSTI, LFI, CSRF)\n• Look up CVE information\n• Teach cybersecurity concepts\n• Voice input with adjustable speed/pitch (Mini App)\n• 15 languages support (Mini App)\n• /cancel to stop any operation\n\n⚠️ Always practice on authorized systems only!\n\nFor full features, open the Mini App!\n\n💡 **Try asking me: 'What is SQL injection?' or 'How do I find subdomains?'**",
                     "Markdown"
                 )
                 return {"status": "ok"}
@@ -222,7 +222,6 @@ async def webhook(request: Request):
                         "Markdown"
                     )
                     
-                    # Run Reconix in background
                     try:
                         cmd = ["reconix", target, "--deep", "--threads=10"]
                         process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -268,16 +267,14 @@ async def webhook(request: Request):
                 if target:
                     await send_telegram_message(
                         chat_id,
-                        f"🔍 **Starting FULL reconnaissance on {target}**\n\nRunning: Amass, Subfinder, Naabu, WhatWeb, Nuclei, Gobuster\n\n⏳ This will take 3-5 minutes.\n📊 Results will appear here automatically.\n🛑 Type /cancel to stop the scan.",
+                        f"🔍 **Starting FULL reconnaissance on {target}**\n\nRunning multiple tools...\n\n⏳ This will take 3-5 minutes.\n📊 Results will appear here automatically.\n🛑 Type /cancel to stop the scan.",
                         "Markdown"
                     )
                     
                     try:
-                        # Run multiple tools in sequence
                         all_output = []
                         
                         # Amass
-                        await send_telegram_message(chat_id, "📡 Running Amass for subdomains...", "Markdown")
                         amass_cmd = ["amass", "enum", "-d", target, "-silent"]
                         process = subprocess.Popen(amass_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
                         running_processes[chat_id] = process
@@ -285,7 +282,7 @@ async def webhook(request: Request):
                         all_output.append(f"[Amass Results]\n{stdout[:500]}")
                         
                         # Naabu
-                        await send_telegram_message(chat_id, "🔌 Running Naabu for port scanning...", "Markdown")
+                        await send_telegram_message(chat_id, "📡 Running port scan...", "Markdown")
                         naabu_cmd = ["naabu", "-host", target, "-silent", "-timeout", "500"]
                         process = subprocess.Popen(naabu_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
                         running_processes[chat_id] = process
@@ -293,7 +290,7 @@ async def webhook(request: Request):
                         all_output.append(f"[Port Scan Results]\n{stdout[:500]}")
                         
                         # WhatWeb
-                        await send_telegram_message(chat_id, "🌐 Running WhatWeb for technology detection...", "Markdown")
+                        await send_telegram_message(chat_id, "🌐 Detecting technologies...", "Markdown")
                         whatweb_cmd = ["whatweb", "--quiet", target]
                         process = subprocess.Popen(whatweb_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
                         running_processes[chat_id] = process
@@ -318,7 +315,7 @@ async def webhook(request: Request):
                 else:
                     await send_telegram_message(
                         chat_id,
-                        "📋 **Usage:** /fullrecon <target>\n\nExample: /fullrecon scanme.nmap.org\n\nThis runs Amass, Subfinder, Naabu, WhatWeb, Nuclei, and Gobuster.",
+                        "📋 **Usage:** /fullrecon <target>\n\nExample: /fullrecon scanme.nmap.org",
                         "Markdown"
                     )
                 return {"status": "ok"}
@@ -405,13 +402,40 @@ async def webhook(request: Request):
                     )
                 return {"status": "ok"}
             
-            # ============ DEFAULT RESPONSE ============
+            # ============ AI CHAT FOR REGULAR MESSAGES (FIXED) ============
             else:
-                await send_telegram_message(
-                    chat_id,
-                    f"🤖 **Cy30rt_AI**\n\nFor full AI chat, reconnaissance, payloads, and interactive features, please open the Mini App:\n\nhttps://cy30rt-miniapp.onrender.com\n\n**Available Commands:**\n/start - Welcome\n/help - All commands\n/recon <target> - Run reconnaissance\n/fullrecon <target> - Complete recon\n/payload <type> - Get payloads\n/cve <id> - Look up CVE\n/learn <topic> - Learn cybersecurity\n/cancel - Stop running operation\n/who - About the creator",
-                    "Markdown"
-                )
+                # Send typing indicator
+                async with httpx.AsyncClient() as client:
+                    await client.post(
+                        f"https://api.telegram.org/bot{BOT_TOKEN}/sendChatAction",
+                        json={"chat_id": chat_id, "action": "typing"}
+                    )
+                
+                try:
+                    # Call your AI service for a response
+                    async with httpx.AsyncClient(timeout=30.0) as client:
+                        response = await client.post(
+                            "https://cy30rt-ai.onrender.com/api/chat",
+                            json={"message": text, "language": "en"}
+                        )
+                        ai_response = response.text
+                        
+                        # Truncate if too long
+                        if len(ai_response) > 4000:
+                            ai_response = ai_response[:4000] + "..."
+                        
+                        await send_telegram_message(
+                            chat_id,
+                            f"🤖 **Cy30rt_AI:**\n\n{ai_response}",
+                            "Markdown"
+                        )
+                except Exception as e:
+                    # Fallback response if AI service fails
+                    await send_telegram_message(
+                        chat_id,
+                        f"🤖 **Cy30rt_AI:**\n\nHello! I am Cy30rt_AI, your cybersecurity assistant created by Abdulbasid Yakubu (cy30rt).\n\nType /help to see what I can do!\n\nYou can ask me:\n• What is SQL injection?\n• How do I find subdomains?\n• Give me XSS payloads\n\nTry again in a moment!",
+                        "Markdown"
+                    )
         
         return {"status": "ok"}
         
