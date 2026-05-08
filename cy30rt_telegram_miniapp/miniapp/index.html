@@ -51,14 +51,14 @@
                 <p>Cybersecurity Intelligence Platform</p>
                 <div class="badge-group">
                     <span class="badge">🤖 AI-Powered</span>
-                    <span class="badge">⚡ Real-Time Intel</span>
+                    <span class="badge">⚡ DeepSeek AI</span>
                     <span class="badge">🌍 15 Languages</span>
                 </div>
             </div>
             <div class="language-grid" id="languageGrid"></div>
             <div class="language-footer">
                 <span>© 2026 Abdulbasid Yakubu (cy30rt)</span>
-                <span class="version">v2.0 | Cerebras + Groq + ContrastAPI</span>
+                <span class="version">v3.0 | DeepSeek + Cerebras + Groq + ContrastAPI</span>
             </div>
         </div>
     </div>
@@ -88,6 +88,13 @@
                         <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
                     </svg>
                 </button>
+                <button id="clearHistoryBtn" class="nav-btn" title="Clear Chat History">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                        <line x1="10" y1="11" x2="10" y2="17"/>
+                        <line x1="14" y1="11" x2="14" y2="17"/>
+                    </svg>
+                </button>
                 <button id="settingsBtn" class="nav-btn" title="Voice Settings">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                         <circle cx="12" cy="12" r="3"/>
@@ -99,12 +106,6 @@
                         <path d="M12 2a10 10 0 1 0 10 10 10 10 0 0 0-10-10zM2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
                     </svg>
                 </button>
-                <button id="voiceBtn" class="nav-btn voice-btn" title="Voice Input">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
-                        <path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8"/>
-                    </svg>
-                </button>
             </div>
         </nav>
         
@@ -114,38 +115,16 @@
                 <span class="status-dot"></span>
                 <span id="statusText">Operational</span>
                 <span class="status-divider">|</span>
-                <span class="api-badge">🤖 Cerebras AI</span>
+                <span class="api-badge">🧠 DeepSeek AI</span>
+                <span class="api-badge">⚡ Cerebras</span>
                 <span class="api-badge">🔍 ContrastAPI</span>
             </div>
-            <div id="modelInfo" class="model-info">Cybersecurity Intelligence v2.0</div>
+            <div id="modelInfo" class="model-info">Cybersecurity Intelligence v3.0</div>
         </div>
         
         <!-- Chat Container -->
         <div class="chat-container" id="chatContainer">
-            <div class="chat-messages" id="chatMessages">
-                <div class="message ai">
-                    <div class="message-avatar">🤖</div>
-                    <div class="message-content">
-                        <div class="message-header">
-                            <span class="message-sender">Cy30rt_AI</span>
-                            <span class="message-time">Just now</span>
-                        </div>
-                        <div class="message-text">
-                            Welcome to Cy30rt_AI, your professional cybersecurity intelligence assistant.
-                            <br><br>
-                            Developed by Abdulbasid Yakubu (cy30rt), I provide:
-                            <br><br>
-                            • Real-time vulnerability analysis (CVE data)
-                            • Domain reconnaissance and IP intelligence
-                            • Threat hunting guidance and payload references
-                            • Multi-language support (15 languages)
-                            • Voice interaction with adjustable speed
-                            <br><br>
-                            How may I assist you with your security inquiry today?
-                        </div>
-                    </div>
-                </div>
-            </div>
+            <div class="chat-messages" id="chatMessages"></div>
         </div>
         
         <!-- Quick Actions -->
@@ -157,29 +136,32 @@
             <button class="action-btn" data-action="recon">📡 Reconnaissance</button>
         </div>
         
-        <!-- Input Section - WIDE AREA -->
+        <!-- Input Section - Voice Button INSIDE like DeepSeek/ChatGPT -->
         <div class="input-section">
-            <div class="input-wrapper-wide">
-                <textarea id="messageInput" rows="1" placeholder="Ask about vulnerabilities, CVE IDs, domain recon, or any cybersecurity topic..."></textarea>
-                <button id="sendBtn" class="send-btn-wide">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <div class="input-container">
+                <textarea id="messageInput" rows="1" placeholder="Ask anything about cybersecurity..."></textarea>
+                <button id="voiceBtn" class="voice-input-btn" title="Voice Input">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                        <path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8"/>
+                    </svg>
+                </button>
+                <button id="sendBtn" class="send-btn-icon">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <line x1="22" y1="2" x2="11" y2="13"/>
                         <polygon points="22 2 15 22 11 13 2 9 22 2"/>
                     </svg>
-                    <span>Send</span>
                 </button>
             </div>
             <div class="input-footer">
-                <span class="security-notice">🔒 Authorized testing only | Responses are AI-generated for educational purposes</span>
+                <span class="security-notice">🔒 Authorized testing only | Powered by DeepSeek + Cerebras + Groq</span>
             </div>
         </div>
         
         <!-- Typing Indicator -->
         <div id="typingIndicator" class="typing-indicator">
-            <div class="typing-dots">
-                <span></span><span></span><span></span>
-            </div>
-            <span id="typingText">Processing intelligence</span>
+            <div class="typing-dots"><span></span><span></span><span></span></div>
+            <span id="typingText">Cy30rt_AI is thinking</span>
         </div>
     </div>
     
@@ -210,7 +192,7 @@
                     </label>
                 </div>
                 <div class="setting-item">
-                    <label>📢 Voice readback (reads your question)</label>
+                    <label>📢 Voice readback</label>
                     <label class="toggle">
                         <input type="checkbox" id="voiceReadbackToggle">
                         <span class="toggle-slider"></span>
@@ -228,7 +210,7 @@
                 </div>
                 <div class="setting-divider"></div>
                 <div class="info-text">
-                    <small>Powered by 🤖 Cerebras AI (ultra-fast) + Groq (backup) + ContrastAPI (threat intel)</small>
+                    <small>🧠 Primary: DeepSeek AI | ⚡ Secondary: Cerebras | 🛡️ Intel: ContrastAPI</small>
                 </div>
             </div>
         </div>
