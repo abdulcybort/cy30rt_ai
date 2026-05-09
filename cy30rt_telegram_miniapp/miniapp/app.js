@@ -1,17 +1,12 @@
-// Cy30rt_AI - Complete Version with History Bar
-// Created by Abdulbasid Yakubu (cy30rt)
-
+// Cy30rt_AI - DeepSeek Style Complete Version
 const API_URL = "https://cy30rt-ai.onrender.com";
 
 // Global variables
 let currentLanguage = "en";
 let audioInitialized = false;
 let chatHistory = [];
-let currentSessionId = null;
-let recordingStatusDiv = null;
-let currentStreamingMessage = null;
-let currentResponseText = "";
 let currentChatId = null;
+let recordingStatusDiv = null;
 
 // Voice settings
 let voiceSpeed = 1.0;
@@ -28,30 +23,30 @@ const voiceMap = {
     'tr': 'tr-TR', 'fa': 'fa-IR', 'ur': 'ur-PK'
 };
 
-// ============ CHAT HISTORY MANAGEMENT ============
+// ============ CHAT HISTORY ============
 function initChatHistory() {
-    const saved = localStorage.getItem("cy30rt_chat_sessions");
+    const saved = localStorage.getItem("cy30rt_chats");
     if (saved) {
         try {
             chatHistory = JSON.parse(saved);
         } catch(e) { chatHistory = []; }
     }
     
-    if (!currentSessionId) {
-        currentSessionId = 'session_' + Date.now();
-        currentChatId = currentSessionId;
+    if (chatHistory.length === 0) {
+        createNewChat();
+    } else {
+        currentChatId = chatHistory[0].id;
+        loadCurrentChat();
     }
-    
-    loadChatList();
-    loadCurrentChat();
+    renderHistoryList();
 }
 
-function saveChatSessions() {
-    localStorage.setItem("cy30rt_chat_sessions", JSON.stringify(chatHistory));
+function saveChats() {
+    localStorage.setItem("cy30rt_chats", JSON.stringify(chatHistory));
 }
 
 function createNewChat() {
-    const newId = 'session_' + Date.now();
+    const newId = Date.now().toString();
     const newChat = {
         id: newId,
         title: "New Chat",
@@ -61,169 +56,138 @@ function createNewChat() {
     };
     chatHistory.unshift(newChat);
     currentChatId = newId;
-    saveChatSessions();
-    loadChatList();
+    saveChats();
+    renderHistoryList();
     loadCurrentChat();
 }
 
 function deleteChat(chatId) {
     chatHistory = chatHistory.filter(c => c.id !== chatId);
-    if (currentChatId === chatId && chatHistory.length > 0) {
+    if (chatHistory.length === 0) {
+        createNewChat();
+    } else if (currentChatId === chatId) {
         currentChatId = chatHistory[0].id;
         loadCurrentChat();
-    } else if (chatHistory.length === 0) {
-        currentChatId = null;
-        document.getElementById("messagesContainer").innerHTML = getWelcomeMessageHTML();
     }
-    saveChatSessions();
-    loadChatList();
+    saveChats();
+    renderHistoryList();
 }
 
 function switchChat(chatId) {
     currentChatId = chatId;
     loadCurrentChat();
-    loadChatList();
-}
-
-function loadChatList() {
-    const historyList = document.getElementById("historyList");
-    if (!historyList) return;
-    
-    if (chatHistory.length === 0) {
-        historyList.innerHTML = '<div style="padding: 20px; text-align: center; color: #666;">No chats yet</div>';
-        return;
-    }
-    
-    historyList.innerHTML = chatHistory.map(chat => `
-        <div class="history-item ${currentChatId === chat.id ? 'active' : ''}" onclick="switchChat('${chat.id}')">
-            <div class="history-title">${escapeHtml(chat.title.length > 30 ? chat.title.substring(0, 30) + '...' : chat.title)}</div>
-            <div class="history-date">${new Date(chat.updatedAt).toLocaleDateString()}</div>
-        </div>
-    `).join('');
+    renderHistoryList();
 }
 
 function loadCurrentChat() {
-    const container = document.getElementById("messagesContainer");
-    if (!container) return;
-    
     const chat = chatHistory.find(c => c.id === currentChatId);
+    const container = document.getElementById("messagesContainer");
     
     if (!chat || chat.messages.length === 0) {
-        container.innerHTML = getWelcomeMessageHTML();
+        container.innerHTML = getWelcomeHTML();
         return;
     }
     
     container.innerHTML = '';
     chat.messages.forEach(msg => {
         if (msg.role === 'user') {
-            addUserMessageToUI(msg.content, msg.timestamp);
+            addMessageToUI('user', msg.content, msg.timestamp);
         } else if (msg.role === 'assistant') {
-            addAIMessageToUI(msg.content, msg.timestamp);
+            addMessageToUI('assistant', msg.content, msg.timestamp);
         }
     });
     scrollToBottom();
+}
+
+function renderHistoryList() {
+    const historyList = document.getElementById("historyList");
+    if (!historyList) return;
+    
+    if (chatHistory.length === 0) {
+        historyList.innerHTML = '<div style="padding: 12px; text-align: center; color: #666;">No chats yet</div>';
+        return;
+    }
+    
+    historyList.innerHTML = chatHistory.map(chat => `
+        <div class="history-item ${currentChatId === chat.id ? 'active' : ''}" onclick="switchChat('${chat.id}')">
+            ${escapeHtml(chat.title.substring(0, 30))}
+        </div>
+    `).join('');
 }
 
 function addMessageToCurrentChat(role, content) {
     const chat = chatHistory.find(c => c.id === currentChatId);
     if (!chat) return;
     
-    const message = {
+    chat.messages.push({
         role: role,
         content: content,
         timestamp: new Date().toISOString()
-    };
-    chat.messages.push(message);
+    });
     chat.updatedAt = new Date().toISOString();
     
     if (role === 'user' && chat.messages.length === 1) {
-        chat.title = content.substring(0, 40) + (content.length > 40 ? '...' : '');
+        chat.title = content.substring(0, 30) + (content.length > 30 ? '...' : '');
     }
     
-    saveChatSessions();
-    loadChatList();
+    saveChats();
+    renderHistoryList();
 }
 
-function getWelcomeMessageHTML() {
+function getWelcomeHTML() {
     return `
-        <div class="welcome-message">
+        <div class="welcome-screen">
             <div class="welcome-icon">🤖</div>
             <h1>Cy30rt_AI</h1>
-            <p>Your professional cybersecurity intelligence assistant</p>
-            <div class="capabilities">
-                <span>🔍 CVE Analysis</span>
-                <span>🌐 Domain Recon</span>
-                <span>📡 IP Intelligence</span>
-                <span>💉 Payload References</span>
-                <span>🌍 15 Languages</span>
-                <span>🎤 Voice Input</span>
-            </div>
-            <div class="creator-note">
-                Developed by Abdulbasid Yakubu (cy30rt)
+            <p>How can I help you with cybersecurity today?</p>
+            <div class="example-prompts">
+                <button class="example-btn" onclick="sendExample('What is SQL injection? Explain with examples.')">What is SQL injection?</button>
+                <button class="example-btn" onclick="sendExample('How to perform network reconnaissance?')">How to perform network reconnaissance?</button>
+                <button class="example-btn" onclick="sendExample('Explain Cross-Site Scripting (XSS) attacks.')">Explain XSS attacks</button>
             </div>
         </div>
     `;
 }
 
-function addUserMessageToUI(text, timestamp = null) {
+function addMessageToUI(role, content, timestamp = null) {
     const container = document.getElementById("messagesContainer");
     const timeStr = timestamp ? new Date(timestamp).toLocaleTimeString() : new Date().toLocaleTimeString();
     const messageDiv = document.createElement("div");
-    messageDiv.className = "message user";
+    messageDiv.className = `message ${role}`;
     messageDiv.innerHTML = `
-        <div class="message-avatar">U</div>
+        <div class="message-avatar">${role === 'user' ? 'U' : 'AI'}</div>
         <div class="message-content">
             <div class="message-header">
-                <span class="message-sender">You</span>
+                <span class="message-sender">${role === 'user' ? 'You' : 'Cy30rt_AI'}</span>
                 <span class="message-time">${timeStr}</span>
             </div>
-            <div class="message-text">${escapeHtml(text)}</div>
+            <div class="message-text">${formatMessage(escapeHtml(content))}</div>
         </div>
     `;
     container.appendChild(messageDiv);
     scrollToBottom();
 }
 
-function addAIMessageToUI(text, timestamp = null) {
-    const container = document.getElementById("messagesContainer");
-    const timeStr = timestamp ? new Date(timestamp).toLocaleTimeString() : new Date().toLocaleTimeString();
-    const messageDiv = document.createElement("div");
-    messageDiv.className = "message assistant";
-    messageDiv.innerHTML = `
-        <div class="message-avatar">AI</div>
-        <div class="message-content">
-            <div class="message-header">
-                <span class="message-sender">Cy30rt_AI</span>
-                <span class="message-time">${timeStr}</span>
-            </div>
-            <div class="message-text">${formatMessageText(escapeHtml(text))}</div>
-        </div>
-    `;
-    container.appendChild(messageDiv);
-    scrollToBottom();
+function formatMessage(text) {
+    text = text.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
+    text = text.replace(/`([^`]+)`/g, '<code>$1</code>');
+    text = text.replace(/\n/g, '<br>');
+    return text;
 }
 
-// ============ TYPING ANIMATION (Like DeepSeek) ============
+// ============ TYPING ANIMATION ============
 async function typeMessage(element, text) {
     element.innerHTML = '';
     const chars = text.split('');
-    
     for (let i = 0; i < chars.length; i++) {
         element.innerHTML += chars[i];
-        await sleep(15);
+        await sleep(10);
         scrollToBottom();
     }
 }
 
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-function formatMessageText(text) {
-    text = text.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
-    text = text.replace(/`([^`]+)`/g, '<code>$1</code>');
-    text = text.replace(/\n/g, '<br>');
-    return text;
 }
 
 // ============ SEND MESSAGE ============
@@ -235,7 +199,13 @@ async function sendMessage() {
     input.value = "";
     input.style.height = "auto";
     
-    addUserMessageToUI(message);
+    // Remove welcome screen if present
+    const container = document.getElementById("messagesContainer");
+    if (container.querySelector(".welcome-screen")) {
+        container.innerHTML = '';
+    }
+    
+    addMessageToUI('user', message);
     addMessageToCurrentChat('user', message);
     
     showTypingIndicator();
@@ -250,11 +220,9 @@ async function sendMessage() {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         
         const data = await response.text();
-        
         hideTypingIndicator();
         
         // Create AI message container
-        const container = document.getElementById("messagesContainer");
         const messageDiv = document.createElement("div");
         messageDiv.className = "message assistant";
         messageDiv.innerHTML = `
@@ -282,9 +250,32 @@ async function sendMessage() {
         
     } catch (error) {
         hideTypingIndicator();
-        console.error("Error:", error);
+        console.error(error);
         addErrorMessage(error.message);
     }
+}
+
+function sendExample(prompt) {
+    document.getElementById("messageInput").value = prompt;
+    sendMessage();
+}
+
+function addErrorMessage(error) {
+    const container = document.getElementById("messagesContainer");
+    const errorDiv = document.createElement("div");
+    errorDiv.className = "message assistant";
+    errorDiv.innerHTML = `
+        <div class="message-avatar">!</div>
+        <div class="message-content">
+            <div class="message-header">
+                <span class="message-sender">Error</span>
+                <span class="message-time">${new Date().toLocaleTimeString()}</span>
+            </div>
+            <div class="message-text" style="color: #ef4444;">Error: ${escapeHtml(error)}</div>
+        </div>
+    `;
+    container.appendChild(errorDiv);
+    scrollToBottom();
 }
 
 function addAudioControls(messageDiv, text, language) {
@@ -392,7 +383,7 @@ function showRecordingStatus() {
     if (recordingStatusDiv) recordingStatusDiv.remove();
     recordingStatusDiv = document.createElement("div");
     recordingStatusDiv.className = "recording-status";
-    recordingStatusDiv.innerHTML = '🎙️ Recording... Speak now';
+    recordingStatusDiv.innerHTML = 'Recording... Speak now';
     document.body.appendChild(recordingStatusDiv);
     setTimeout(() => { if (recordingStatusDiv) recordingStatusDiv.remove(); }, 10000);
 }
@@ -424,31 +415,10 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
-function addErrorMessage(error) {
-    const container = document.getElementById("messagesContainer");
-    const errorDiv = document.createElement("div");
-    errorDiv.className = "message assistant";
-    errorDiv.innerHTML = `
-        <div class="message-avatar">!</div>
-        <div class="message-content">
-            <div class="message-header">
-                <span class="message-sender">System</span>
-                <span class="message-time">${new Date().toLocaleTimeString()}</span>
-            </div>
-            <div class="message-text" style="color: #ef4444;">Error: ${escapeHtml(error)}</div>
-        </div>
-    `;
-    container.appendChild(errorDiv);
-    scrollToBottom();
-}
-
 function clearAllHistory() {
     if (confirm("Delete all chat history? This cannot be undone.")) {
         chatHistory = [];
-        currentChatId = null;
-        saveChatSessions();
-        loadChatList();
-        document.getElementById("messagesContainer").innerHTML = getWelcomeMessageHTML();
+        createNewChat();
     }
 }
 
@@ -506,33 +476,35 @@ function renderLanguageGrid() {
     const grid = document.getElementById("languageModalGrid");
     if (!grid || typeof LANGUAGES === 'undefined') return;
     grid.innerHTML = "";
+    grid.className = "language-grid";
     Object.entries(LANGUAGES).forEach(([code, lang]) => {
         const btn = document.createElement("div");
         btn.className = "language-item";
         btn.onclick = () => changeLanguage(code);
-        btn.innerHTML = `<div class="language-flag">${lang.flag}</div><div class="language-name">${lang.name}</div><div class="language-native">${lang.native}</div>`;
+        btn.innerHTML = `
+            <div class="language-flag">${lang.flag}</div>
+            <div class="language-name">${lang.name}</div>
+            <div class="language-native">${lang.native}</div>
+        `;
         grid.appendChild(btn);
     });
 }
 
 // ============ MOBILE MENU ============
 function toggleMobileMenu() {
-    const sidebar = document.getElementById("sidebar");
-    sidebar.classList.toggle("open");
+    document.getElementById("sidebar").classList.toggle("open");
 }
 
 // ============ INITIALIZE ============
 document.addEventListener("DOMContentLoaded", () => {
-    console.log("Cy30rt_AI Loaded - DeepSeek Style");
+    console.log("Cy30rt_AI Ready - DeepSeek Style");
     
     initChatHistory();
     loadSettings();
     renderLanguageGrid();
     
-    // Event listeners
     document.getElementById("sendBtn")?.addEventListener("click", sendMessage);
-    document.getElementById("newChatSidebarBtn")?.addEventListener("click", createNewChat);
-    document.getElementById("clearAllHistoryBtn")?.addEventListener("click", clearAllHistory);
+    document.getElementById("newChatBtn")?.addEventListener("click", createNewChat);
     document.getElementById("settingsBtn")?.addEventListener("click", showSettingsModal);
     document.getElementById("languageBtn")?.addEventListener("click", showLanguageModal);
     document.getElementById("mobileMenuBtn")?.addEventListener("click", toggleMobileMenu);
@@ -542,6 +514,11 @@ document.addEventListener("DOMContentLoaded", () => {
             e.preventDefault();
             sendMessage();
         }
+    });
+    
+    document.getElementById("messageInput")?.addEventListener("input", function(e) {
+        e.target.style.height = "auto";
+        e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px";
     });
     
     document.querySelector(".modal-close")?.addEventListener("click", closeLanguageModal);
@@ -559,18 +536,21 @@ document.addEventListener("DOMContentLoaded", () => {
         if (event.target === document.getElementById("settingsModal")) closeSettingsModal();
     };
     
+    if (document.getElementById("sidebar")) {
+        document.addEventListener("click", function(e) {
+            const sidebar = document.getElementById("sidebar");
+            const menuBtn = document.getElementById("mobileMenuBtn");
+            if (sidebar && sidebar.classList.contains("open") && !sidebar.contains(e.target) && e.target !== menuBtn) {
+                sidebar.classList.remove("open");
+            }
+        });
+    }
+    
     const savedLang = localStorage.getItem("cy30rt_language");
     if (savedLang && typeof LANGUAGES !== 'undefined' && LANGUAGES[savedLang]) {
         currentLanguage = savedLang;
     }
 });
 
-// Auto-resize textarea
-document.addEventListener("input", function(e) {
-    if (e.target.id === "messageInput") {
-        e.target.style.height = "auto";
-        e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px";
-    }
-});
-
 window.switchChat = switchChat;
+window.sendExample = sendExample;
