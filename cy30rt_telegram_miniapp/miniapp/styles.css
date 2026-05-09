@@ -371,7 +371,7 @@ body {
     30% { transform: translateY(-6px); opacity: 1; }
 }
 
-/* ============ INPUT AREA - EXACTLY LIKE DEEPSEEK WITH STOP BUTTON ============ */
+/* ============ INPUT AREA - EXACTLY LIKE DEEPSEEK ============ */
 .input-area {
     padding: 0 24px 32px;
     background: transparent;
@@ -420,8 +420,7 @@ body {
     gap: 4px;
 }
 
-/* Voice Button */
-.voice-btn {
+.voice-btn, .send-btn {
     background: transparent;
     border: none;
     color: var(--text-secondary);
@@ -434,8 +433,12 @@ body {
     justify-content: center;
 }
 
-.voice-btn:hover {
+.voice-btn:hover, .send-btn:hover {
     background: var(--bg-main);
+    color: var(--accent);
+}
+
+.send-btn {
     color: var(--accent);
 }
 
@@ -443,48 +446,6 @@ body {
     background: rgba(239,68,68,0.2);
     color: var(--danger);
     animation: pulseRed 1s infinite;
-}
-
-/* STOP BUTTON */
-.stop-btn {
-    background: rgba(239,68,68,0.15);
-    border: none;
-    color: #ef4444;
-    cursor: pointer;
-    padding: 6px;
-    border-radius: 50%;
-    transition: all 0.2s;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.stop-btn:hover {
-    background: rgba(239,68,68,0.3);
-    transform: scale(1.05);
-}
-
-.stop-btn.active {
-    animation: pulseRed 1s infinite;
-}
-
-/* Send Button */
-.send-btn {
-    background: transparent;
-    border: none;
-    color: var(--accent);
-    cursor: pointer;
-    padding: 6px;
-    border-radius: 50%;
-    transition: all 0.2s;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.send-btn:hover {
-    background: var(--bg-main);
-    transform: scale(1.05);
 }
 
 @keyframes pulseRed {
