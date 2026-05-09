@@ -10,10 +10,34 @@ from typing import AsyncGenerator, Dict, List, Any
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 class Cy30rtAI:
-    """Professional Cybersecurity AI with Multi-Tool Bug Bounty Integration"""
+    """Professional Cybersecurity AI with Multi-Tool Bug Bounty Integration + N-ATLAS for Nigerian Languages"""
     
     def __init__(self):
         self.groq_client = AsyncGroq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
+        
+        # N-ATLAS for Hausa/Yoruba/Igbo (Nigeria's Official AI Model)
+        self.n_atlas_available = False
+        self.n_atlas_tokenizer = None
+        self.n_atlas_model = None
+        
+        # Try to load N-ATLAS
+        try:
+            from transformers import AutoTokenizer, AutoModelForCausalLM
+            import torch
+            
+            # N-ATLAS model from Hugging Face
+            model_name = "Awarri/N-ATLaS-LLM"
+            self.n_atlas_tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+            self.n_atlas_model = AutoModelForCausalLM.from_pretrained(
+                model_name, 
+                torch_dtype=torch.float16,
+                device_map="auto",
+                trust_remote_code=True
+            )
+            self.n_atlas_available = True
+            print("[Cy30rt_AI] N-ATLAS loaded successfully for Hausa/Yoruba/Igbo")
+        except Exception as e:
+            print(f"[Cy30rt_AI] N-ATLAS not available: {e}")
         
         self.system_prompt = """You are Cy30rt_AI, a professional cybersecurity and bug bounty assistant created by Abdulbasid Yakubu (cy30rt).
 
@@ -23,12 +47,60 @@ CAPABILITIES:
 - Analyze aggregated findings from all tools
 - Generate exploitation payloads
 - Provide step-by-step guidance
+- Support Hausa, Yoruba, Igbo via N-ATLAS (Nigeria's official AI model)
 
 IMPORTANT RULES:
 - ALWAYS remind users to ONLY test authorized targets
 - NEVER encourage illegal hacking
 - Provide complete, detailed responses
 - End responses with: "Stay secure. - Cy30rt_AI"""
+
+    # ============ N-ATLAS FOR HAUSA/YORUBA/IGBO ============
+    
+    async def chat_with_n_atlas(self, message: str, language: str) -> AsyncGenerator[str, None]:
+        """Use Nigeria's official N-ATLAS model for Hausa/Yoruba/Igbo"""
+        if not self.n_atlas_available:
+            yield "N-ATLAS model is not available. Please use English or check server configuration."
+            return
+        
+        try:
+            # Language-specific prompts
+            if language == "ha":
+                prompt = f"Mutum: {message}\nCy30rt_AI: "
+            elif language == "yo":
+                prompt = f"Eniyan: {message}\nCy30rt_AI: "
+            elif language == "ig":
+                prompt = f"Mmadu: {message}\nCy30rt_AI: "
+            else:
+                prompt = f"User: {message}\nCy30rt_AI: "
+            
+            inputs = self.n_atlas_tokenizer(prompt, return_tensors="pt").to(self.n_atlas_model.device)
+            outputs = self.n_atlas_model.generate(
+                **inputs, 
+                max_new_tokens=500,
+                temperature=0.7,
+                do_sample=True
+            )
+            response = self.n_atlas_tokenizer.decode(outputs[0], skip_special_tokens=True)
+            
+            # Extract assistant response
+            if language == "ha":
+                response = response.split("Cy30rt_AI:")[-1].strip() if "Cy30rt_AI:" in response else response
+            elif language == "yo":
+                response = response.split("Cy30rt_AI:")[-1].strip() if "Cy30rt_AI:" in response else response
+            elif language == "ig":
+                response = response.split("Cy30rt_AI:")[-1].strip() if "Cy30rt_AI:" in response else response
+            else:
+                response = response.split("Cy30rt_AI:")[-1].strip() if "Cy30rt_AI:" in response else response
+            
+            # Add safety warning for cybersecurity content
+            if any(word in response.lower() for word in ["hack", "exploit", "attack", "vulnerability", "injection"]):
+                response += "\n\n⚠️ Koyaushe gwada akan tsarin izini kawai. | Always test on authorized systems only."
+            
+            yield response
+            
+        except Exception as e:
+            yield f"Error with N-ATLAS: {str(e)}\n\nPlease try again or use English."
 
     # ============ MULTI-TOOL RECONNAISSANCE INTEGRATION ============
     
@@ -471,6 +543,13 @@ Injecting malicious JavaScript into web pages.
         
         msg_lower = message.lower().strip()
         
+        # ============ CHECK FOR NIGERIAN LANGUAGES (N-ATLAS) ============
+        # Route Hausa, Yoruba, Igbo to N-ATLAS
+        if language in ["ha", "yo", "ig"] and self.n_atlas_available:
+            async for chunk in self.chat_with_n_atlas(message, language):
+                yield chunk
+            return
+        
         # ============ MULTI-TOOL RECON COMMANDS ============
         
         if msg_lower.startswith("/fullrecon"):
@@ -641,6 +720,10 @@ Injecting malicious JavaScript into web pages.
 /learn xss - XSS tutorial
 /learn recon - Recon methodology
 
+🌍 **LANGUAGES:**
+N-ATLAS integrated for Hausa (🇳🇬), Yoruba (🇳🇬), Igbo (🇳🇬)
+Select language from the 🌐 icon
+
 💬 **GENERAL:**
 /help - Show this help
 /who - About the creator
@@ -664,12 +747,18 @@ I am a professional cybersecurity and bug bounty assistant created by **Abdulbas
 • Gobuster - Directory brute force
 • Reconix - All-in-one reconnaissance
 
+**AI Models:**
+• Groq AI (Primary)
+• Cerebras (Backup)
+• N-ATLAS (Hausa/Yoruba/Igbo - Nigeria's Official AI)
+
 **Other Features:**
 • Generate attack payloads (SQLi, XSS, SSTI, LFI, CSRF)
 • Look up CVE information
 • Teach cybersecurity concepts
 • 15 languages support
 • Voice interaction
+• Conversation memory - I remember our chat!
 
 ⚠️ Always practice on authorized systems only!
 
