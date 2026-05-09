@@ -2,14 +2,12 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies
+# Install only essential system dependencies (NO Go, NO extra tools)
 RUN apt-get update && apt-get install -y \
     curl \
     git \
-    wget \
     python3-pip \
     ca-certificates \
-    nmap \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Node.js 20.x for Reconix
@@ -17,11 +15,13 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
     apt-get install -y nodejs && \
     rm -rf /var/lib/apt/lists/*
 
-# Install Reconix globally (does everything - subdomains, ports, tech, secrets)
+# Install ONLY Reconix (no other Go tools)
 RUN npm install -g @aquibk/reconix
 
-# Copy requirements and install Python dependencies
+# Copy requirements first for better caching
 COPY requirements.txt .
+
+# Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
