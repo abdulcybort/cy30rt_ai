@@ -1,4 +1,4 @@
-// Cy30rt_AI - Complete Version with Reconix Integration
+// Cy30rt_AI - Complete Version with Conversation Memory & Stop Button
 // Created by Abdulbasid Yakubu (cy30rt)
 
 const API_URL = "https://cy30rt-ai.onrender.com";
@@ -9,6 +9,10 @@ let audioInitialized = false;
 let chatHistory = [];
 let currentChatId = null;
 let recordingStatusDiv = null;
+let currentAbortController = null;
+let isGenerating = false;
+let currentSessionId = null;
+let localConversationHistory = [];
 
 // Voice settings
 let voiceSpeed = 1.0;
@@ -20,10 +24,81 @@ let voiceReadbackEnabled = false;
 const voiceMap = {
     'en': 'en-US', 'ar': 'ar-SA', 'es': 'es-ES',
     'fr': 'fr-FR', 'de': 'de-DE', 'hi': 'hi-IN',
-    'ha': 'en-US', 'pt': 'pt-BR', 'ru': 'ru-RU',
-    'zh': 'zh-CN', 'ja': 'ja-JP', 'ko': 'ko-KR',
-    'tr': 'tr-TR', 'fa': 'fa-IR', 'ur': 'ur-PK'
+    'ha': 'en-US', 'yo': 'en-US', 'ig': 'en-US',
+    'pt': 'pt-BR', 'ru': 'ru-RU', 'zh': 'zh-CN',
+    'ja': 'ja-JP', 'ko': 'ko-KR', 'tr': 'tr-TR',
+    'fa': 'fa-IR', 'ur': 'ur-PK'
 };
+
+// ============ CONVERSATION MEMORY ============
+function initSession() {
+    currentSessionId = localStorage.getItem("cy30rt_session_id");
+    if (!currentSessionId) {
+        currentSessionId = 'session_' + Date.now();
+        localStorage.setItem("cy30rt_session_id", currentSessionId);
+    }
+    
+    const saved = localStorage.getItem(`cy30rt_memory_${currentSessionId}`);
+    if (saved) {
+        try {
+            localConversationHistory = JSON.parse(saved);
+        } catch(e) { localConversationHistory = []; }
+    }
+}
+
+function saveLocalHistory() {
+    if (currentSessionId) {
+        localStorage.setItem(`cy30rt_memory_${currentSessionId}`, JSON.stringify(localConversationHistory.slice(-50)));
+    }
+}
+
+function addToLocalHistory(role, content) {
+    localConversationHistory.push({
+        role: role,
+        content: content,
+        timestamp: new Date().toISOString()
+    });
+    saveLocalHistory();
+}
+
+function getConversationContext() {
+    const recent = localConversationHistory.slice(-10);
+    if (recent.length === 0) return "";
+    
+    let context = "Previous conversation:\n";
+    for (const msg of recent) {
+        context += `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content.substring(0, 500)}\n`;
+    }
+    context += "\nBased on the above conversation, respond to the user's latest message. Maintain consistency and refer back to previous topics.\n";
+    return context;
+}
+
+// ============ STOP BUTTON ============
+function stopGeneration() {
+    if (currentAbortController) {
+        currentAbortController.abort();
+        currentAbortController = null;
+    }
+    isGenerating = false;
+    hideTypingIndicator();
+    
+    const container = document.getElementById("messagesContainer");
+    const stopDiv = document.createElement("div");
+    stopDiv.className = "message system";
+    stopDiv.innerHTML = `
+        <div class="message-avatar">⏹️</div>
+        <div class="message-content">
+            <div class="message-text" style="background: rgba(239,68,68,0.1); text-align: center;">
+                Generation stopped by user.
+            </div>
+        </div>
+    `;
+    container.appendChild(stopDiv);
+    scrollToBottom();
+    
+    const stopBtn = document.getElementById("stopBtn");
+    if (stopBtn) stopBtn.classList.remove("active");
+}
 
 // ============ CHAT HISTORY ============
 function initChatHistory() {
@@ -31,9 +106,9 @@ function initChatHistory() {
     if (saved) {
         try {
             chatHistory = JSON.parse(saved);
-        } catch(e) { chatHistory = []; }
+        } catch (e) { chatHistory = []; }
     }
-    
+
     if (chatHistory.length === 0) {
         createNewChat();
     } else {
@@ -72,12 +147,12 @@ function switchChat(chatId) {
 function loadCurrentChat() {
     const chat = chatHistory.find(c => c.id === currentChatId);
     const container = document.getElementById("messagesContainer");
-    
+
     if (!chat || chat.messages.length === 0) {
         container.innerHTML = getWelcomeHTML();
         return;
     }
-    
+
     container.innerHTML = '';
     chat.messages.forEach(msg => {
         if (msg.role === 'user') {
@@ -92,12 +167,12 @@ function loadCurrentChat() {
 function renderHistoryList() {
     const historyList = document.getElementById("historyList");
     if (!historyList) return;
-    
+
     if (chatHistory.length === 0) {
         historyList.innerHTML = '<div style="padding: 12px; text-align: center; color: #666;">No chats yet</div>';
         return;
     }
-    
+
     historyList.innerHTML = chatHistory.map(chat => `
         <div class="history-item ${currentChatId === chat.id ? 'active' : ''}" onclick="switchChat('${chat.id}')">
             ${escapeHtml(chat.title.substring(0, 30))}
@@ -108,18 +183,18 @@ function renderHistoryList() {
 function addMessageToCurrentChat(role, content) {
     const chat = chatHistory.find(c => c.id === currentChatId);
     if (!chat) return;
-    
+
     chat.messages.push({
         role: role,
         content: content,
         timestamp: new Date().toISOString()
     });
     chat.updatedAt = new Date().toISOString();
-    
+
     if (role === 'user' && chat.messages.length === 1) {
         chat.title = content.substring(0, 30) + (content.length > 30 ? '...' : '');
     }
-    
+
     saveChats();
     renderHistoryList();
 }
@@ -131,13 +206,13 @@ function getWelcomeHTML() {
             <h1>Cy30rt_AI</h1>
             <p>Your cybersecurity & bug bounty assistant</p>
             <div class="example-prompts">
-                <button class="example-btn" onclick="sendExample('What is SQL injection?')">Learn SQLi</button>
-                <button class="example-btn" onclick="sendExample('/recon scanme.nmap.org')">Run Recon</button>
-                <button class="example-btn" onclick="sendExample('/payload xss')">Get Payloads</button>
+                <button class="example-btn" onclick="sendExample('/recon scanme.nmap.org')">Fast Recon</button>
+                <button class="example-btn" onclick="sendExample('/fullrecon scanme.nmap.org')">Full Recon</button>
+                <button class="example-btn" onclick="sendExample('/payload sqli')">Get Payloads</button>
                 <button class="example-btn" onclick="sendExample('/cve CVE-2024-6387')">Look up CVE</button>
             </div>
             <div class="creator-note">
-                Created by Abdulbasid Yakubu (cy30rt) | Type /help for all commands
+                Created by Abdulbasid Yakubu (cy30rt) | Type /help for commands | 🇳🇬 N-ATLAS for Hausa/Yoruba/Igbo
             </div>
         </div>
     `;
@@ -162,6 +237,22 @@ function addMessageToUI(role, content, timestamp = null) {
     scrollToBottom();
 }
 
+function addSystemMessage(text) {
+    const container = document.getElementById("messagesContainer");
+    const sysDiv = document.createElement("div");
+    sysDiv.className = "message system";
+    sysDiv.innerHTML = `
+        <div class="message-avatar">ℹ️</div>
+        <div class="message-content">
+            <div class="message-text" style="background: rgba(59,130,246,0.1); text-align: center; font-size: 0.85rem;">
+                ${escapeHtml(text)}
+            </div>
+        </div>
+    `;
+    container.appendChild(sysDiv);
+    scrollToBottom();
+}
+
 function formatMessage(text) {
     text = text.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
     text = text.replace(/`([^`]+)`/g, '<code>$1</code>');
@@ -174,6 +265,10 @@ async function typeMessage(element, text) {
     element.innerHTML = '';
     const chars = text.split('');
     for (let i = 0; i < chars.length; i++) {
+        if (!isGenerating) {
+            element.innerHTML += chars.slice(i).join('');
+            break;
+        }
         element.innerHTML += chars[i];
         await sleep(10);
         scrollToBottom();
@@ -182,6 +277,38 @@ async function typeMessage(element, text) {
 
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// ============ API CALL WITH CANCEL SUPPORT ============
+async function apiCall(endpoint, options) {
+    if (currentAbortController) {
+        currentAbortController.abort();
+    }
+    
+    currentAbortController = new AbortController();
+    isGenerating = true;
+    
+    const stopBtn = document.getElementById("stopBtn");
+    if (stopBtn) stopBtn.classList.add("active");
+    
+    try {
+        const response = await fetch(`${API_URL}${endpoint}`, {
+            ...options,
+            signal: currentAbortController.signal
+        });
+        isGenerating = false;
+        currentAbortController = null;
+        if (stopBtn) stopBtn.classList.remove("active");
+        return response;
+    } catch (error) {
+        isGenerating = false;
+        currentAbortController = null;
+        if (stopBtn) stopBtn.classList.remove("active");
+        if (error.name === 'AbortError') {
+            throw new Error('CANCELLED');
+        }
+        throw error;
+    }
 }
 
 // ============ RECONIX INTEGRATION ============
@@ -205,17 +332,17 @@ async function runReconix(target, options = {}) {
     `;
     container.appendChild(statusDiv);
     scrollToBottom();
-    
+
     try {
-        const response = await fetch(`${API_URL}/api/recon`, {
+        const response = await apiCall('/api/recon', {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ target: target, options: options })
         });
-        
+
         const data = await response.json();
         const statusText = document.getElementById(`reconStatus_${messageId}`);
-        
+
         if (data.success) {
             let resultText = `✅ **Recon Complete - ${target}**\n\n`;
             resultText += `📊 **Summary:**\n`;
@@ -224,40 +351,41 @@ async function runReconix(target, options = {}) {
             resultText += `• Endpoints discovered: ${data.summary.endpoints_found}\n`;
             resultText += `• Secrets found: ${data.summary.secrets_found}\n`;
             resultText += `• Vulnerabilities: ${data.summary.vulnerabilities_found}\n\n`;
-            
+
             if (data.findings.subdomains.length > 0) {
                 resultText += `🔹 **Subdomains:**\n`;
                 data.findings.subdomains.slice(0, 10).forEach(s => resultText += `  • ${s}\n`);
                 resultText += `\n`;
             }
-            
+
             if (data.findings.technologies.length > 0) {
                 resultText += `🔹 **Technologies:**\n`;
                 data.findings.technologies.slice(0, 10).forEach(t => resultText += `  • ${t}\n`);
                 resultText += `\n`;
             }
-            
+
             if (data.findings.endpoints.length > 0) {
                 resultText += `🔹 **Key Endpoints:**\n`;
                 data.findings.endpoints.slice(0, 10).forEach(e => resultText += `  • ${e}\n`);
                 resultText += `\n`;
             }
-            
+
             if (data.findings.secrets.length > 0) {
                 resultText += `⚠️ **Potential Secrets Found - Review Carefully!**\n`;
                 data.findings.secrets.slice(0, 5).forEach(s => resultText += `  • ${s}\n`);
                 resultText += `\n`;
             }
-            
+
             resultText += `💡 **Next Steps:**\n`;
             resultText += `• Ask me: "Analyze these findings"\n`;
             resultText += `• Run: /payload sqli for SQL injection payloads\n`;
             resultText += `• Check subdomains with /recon [subdomain]\n\n`;
             resultText += `⚠️ Only test on authorized targets!\n\nStay secure. - Cy30rt_AI`;
-            
+
             if (statusText) {
                 statusText.innerHTML = formatMessage(escapeHtml(resultText));
             }
+            addToLocalHistory('assistant', resultText);
             return data.output;
         } else {
             if (statusText) {
@@ -266,9 +394,11 @@ async function runReconix(target, options = {}) {
             return null;
         }
     } catch (error) {
-        const statusText = document.getElementById(`reconStatus_${messageId}`);
-        if (statusText) {
-            statusText.innerHTML = `❌ **Error:** ${escapeHtml(error.message)}`;
+        if (error.message !== 'CANCELLED') {
+            const statusText = document.getElementById(`reconStatus_${messageId}`);
+            if (statusText) {
+                statusText.innerHTML = `❌ **Error:** ${escapeHtml(error.message)}`;
+            }
         }
         return null;
     }
@@ -279,56 +409,56 @@ async function sendMessage() {
     const input = document.getElementById("messageInput");
     let message = input.value.trim();
     if (!message) return;
-    
+
     input.value = "";
     input.style.height = "auto";
-    
+
     const container = document.getElementById("messagesContainer");
     if (container.querySelector(".welcome-screen")) {
         container.innerHTML = '';
     }
-    
+
     addMessageToUI('user', message);
     addMessageToCurrentChat('user', message);
-    
+    addToLocalHistory('user', message);
+
+    // Check for cancellation commands first
+    const cancelCommands = ["/cancel", "/stop", "/terminate", "/kill"];
+    if (cancelCommands.includes(message.toLowerCase())) {
+        stopGeneration();
+        return;
+    }
+
     showTypingIndicator();
-    
+
     try {
         // Check for recon commands
         let isReconCommand = false;
         let target = null;
         let options = {};
-        
-        if (message.startsWith('/recon')) {
-            target = message.replace('/recon', '').trim();
-            isReconCommand = true;
-            options = {
-                deep: message.includes('--deep') || message.includes('deep'),
-                js: message.includes('--js') || message.includes('javascript'),
-                historical: message.includes('--historical') || message.includes('wayback'),
-                aggressive: message.includes('--aggressive') || message.includes('full'),
-                threads: 20
-            };
-        } else if (message.toLowerCase().includes('run recon on')) {
-            target = message.toLowerCase().replace('run recon on', '').trim();
-            isReconCommand = true;
-            options = { deep: true, js: true, historical: true, threads: 20 };
-        } else if (message.toLowerCase().match(/scan\s+([a-z0-9.-]+)/)) {
-            const match = message.toLowerCase().match(/scan\s+([a-z0-9.-]+)/);
-            if (match) {
-                target = match[1];
+
+        if (message.startsWith('/fullrecon')) {
+            target = message.replace('/fullrecon', '').trim();
+            if (target) {
                 isReconCommand = true;
-                options = { deep: true, js: true, historical: true, threads: 20 };
+                addSystemMessage(`🔍 Starting FULL reconnaissance on ${target}...\nType /cancel to stop.`);
+                await runReconix(target, { deep: true, js: true, historical: true, aggressive: true });
+                currentOperationType = null;
+                return;
             }
         }
-        
-        if (isReconCommand && target) {
-            hideTypingIndicator();
-            await runReconix(target, options);
-            return;
+
+        if (message.startsWith('/recon')) {
+            target = message.replace('/recon', '').trim();
+            if (target) {
+                isReconCommand = true;
+                addSystemMessage(`🔍 Starting reconnaissance on ${target}...\nType /cancel to stop.`);
+                await runReconix(target, { deep: true, threads: 10 });
+                return;
+            }
         }
-        
-        // Check for payload commands
+
+        // Handle payload commands
         if (message.startsWith('/payload')) {
             const type = message.replace('/payload', '').trim().toLowerCase();
             const payloads = {
@@ -337,7 +467,6 @@ async function sendMessage() {
                 'ssti': `🧠 **SSTI Payloads**\n\n**Jinja2 (Python):**\n{{7*7}}\n{{config}}\n{{''.__class__.__mro__[2].__subclasses__()[40]('/etc/passwd').read()}}`,
                 'lfi': `📂 **LFI/RFI Payloads**\n\n**Basic LFI:**\n../../../../etc/passwd\n../../../etc/passwd%00\nphp://filter/convert.base64-encode/resource=index.php`
             };
-            
             if (type && payloads[type]) {
                 hideTypingIndicator();
                 const messageDiv = document.createElement("div");
@@ -347,79 +476,78 @@ async function sendMessage() {
                 const textDiv = messageDiv.querySelector(".message-text");
                 await typeMessage(textDiv, payloads[type]);
                 addMessageToCurrentChat('assistant', payloads[type]);
+                addToLocalHistory('assistant', payloads[type]);
                 if (autoPlayEnabled) textToSpeech(payloads[type], currentLanguage);
                 addAudioControls(messageDiv, payloads[type], currentLanguage);
                 return;
             }
         }
-        
-        // Check for CVE command
+
+        // Handle CVE command
         if (message.startsWith('/cve')) {
             const cveId = message.replace('/cve', '').trim().toUpperCase();
             if (cveId) {
-                const cveResponse = `🔍 **CVE Intelligence: ${cveId}**\n\nSearching for ${cveId}...\n\nThis CVE lookup provides:\n• Vulnerability description\n• CVSS score (severity rating)\n• Affected software versions\n• Public exploits available\n• Mitigation steps\n\nWould you like me to analyze specific CVEs? Try /cve CVE-2024-6387 (OpenSSH)`;
+                const finalCve = cveId.startsWith('CVE-') ? cveId : `CVE-${cveId}`;
+                addSystemMessage(`🔍 Looking up ${finalCve}...`);
+                const response = await apiCall(`/api/cve/${finalCve}`, { method: "GET" });
+                const data = await response.json();
                 hideTypingIndicator();
+                const resultText = formatCVEResult(data, finalCve);
                 const messageDiv = document.createElement("div");
                 messageDiv.className = "message assistant";
                 messageDiv.innerHTML = `<div class="message-avatar">AI</div><div class="message-content"><div class="message-header"><span class="message-sender">Cy30rt_AI</span><span class="message-time">${new Date().toLocaleTimeString()}</span></div><div class="message-text" id="streamingText"></div></div>`;
                 container.appendChild(messageDiv);
                 const textDiv = messageDiv.querySelector(".message-text");
-                await typeMessage(textDiv, cveResponse);
-                addMessageToCurrentChat('assistant', cveResponse);
-                if (autoPlayEnabled) textToSpeech(cveResponse, currentLanguage);
-                addAudioControls(messageDiv, cveResponse, currentLanguage);
+                await typeMessage(textDiv, resultText);
+                addMessageToCurrentChat('assistant', resultText);
+                addToLocalHistory('assistant', resultText);
+                if (autoPlayEnabled) textToSpeech(resultText, currentLanguage);
+                addAudioControls(messageDiv, resultText, currentLanguage);
                 return;
             }
         }
-        
-        // Check for help command
+
+        // Handle help command
         if (message === '/help' || message === '/commands') {
-            const helpResponse = `🤖 **Cy30rt_AI Complete Commands**\n\n📚 **LEARNING MODE:**\n/learn sqli - SQL injection tutorial\n/learn xss - XSS tutorial\n/learn ssti - SSTI tutorial\n\n🔍 **BUG BOUNTY MODE:**\n/recon <target> - Run automated reconnaissance\n/payload <type> - Generate payloads (sqli, xss, ssti, lfi)\n/cve <id> - Look up CVE information\n\n💬 **GENERAL:**\n/help - Show this help\n/who - About the creator\n/new - Start new chat\n\n⚠️ Always test only on authorized targets!\n\nStay secure. - Cy30rt_AI`;
+            const helpText = getHelpText();
             hideTypingIndicator();
             const messageDiv = document.createElement("div");
             messageDiv.className = "message assistant";
             messageDiv.innerHTML = `<div class="message-avatar">AI</div><div class="message-content"><div class="message-header"><span class="message-sender">Cy30rt_AI</span><span class="message-time">${new Date().toLocaleTimeString()}</span></div><div class="message-text" id="streamingText"></div></div>`;
             container.appendChild(messageDiv);
             const textDiv = messageDiv.querySelector(".message-text");
-            await typeMessage(textDiv, helpResponse);
-            addMessageToCurrentChat('assistant', helpResponse);
-            if (autoPlayEnabled) textToSpeech(helpResponse, currentLanguage);
-            addAudioControls(messageDiv, helpResponse, currentLanguage);
+            await typeMessage(textDiv, helpText);
+            addMessageToCurrentChat('assistant', helpText);
+            addToLocalHistory('assistant', helpText);
+            if (autoPlayEnabled) textToSpeech(helpText, currentLanguage);
+            addAudioControls(messageDiv, helpText, currentLanguage);
             return;
         }
-        
-        // Check for who command
+
+        // Handle who command
         if (message === '/who' || message === '/creator' || message === '/about') {
-            const whoResponse = `🤖 **Cy30rt_AI**\n\nI am a professional cybersecurity and bug bounty assistant created by **Abdulbasid Yakubu (cy30rt)** , a cybersecurity professional dedicated to making security education accessible.\n\n**My capabilities:**\n• Teach cybersecurity concepts\n• Run reconnaissance on authorized targets (Reconix)\n• Generate attack payloads\n• Look up CVE information\n• 15 languages support\n• Voice interaction with adjustable speed\n\n⚠️ Always practice on authorized systems only!\n\nStay secure. - Cy30rt_AI`;
+            const whoText = getWhoText();
             hideTypingIndicator();
             const messageDiv = document.createElement("div");
             messageDiv.className = "message assistant";
             messageDiv.innerHTML = `<div class="message-avatar">AI</div><div class="message-content"><div class="message-header"><span class="message-sender">Cy30rt_AI</span><span class="message-time">${new Date().toLocaleTimeString()}</span></div><div class="message-text" id="streamingText"></div></div>`;
             container.appendChild(messageDiv);
             const textDiv = messageDiv.querySelector(".message-text");
-            await typeMessage(textDiv, whoResponse);
-            addMessageToCurrentChat('assistant', whoResponse);
-            if (autoPlayEnabled) textToSpeech(whoResponse, currentLanguage);
-            addAudioControls(messageDiv, whoResponse, currentLanguage);
+            await typeMessage(textDiv, whoText);
+            addMessageToCurrentChat('assistant', whoText);
+            addToLocalHistory('assistant', whoText);
+            if (autoPlayEnabled) textToSpeech(whoText, currentLanguage);
+            addAudioControls(messageDiv, whoText, currentLanguage);
             return;
         }
-        
-        // Check for new chat command
-        if (message === '/new' || message === '/clear') {
-            createNewChat();
-            hideTypingIndicator();
-            return;
-        }
-        
-        // Check for learn command
+
+        // Handle learn command
         if (message.startsWith('/learn')) {
             const topic = message.replace('/learn', '').trim().toLowerCase();
             const lessons = {
-                'sqli': `📚 **SQL Injection Lesson**\n\n**What is SQL Injection?**\nSQL injection occurs when user input is inserted directly into SQL queries without sanitization.\n\n**How it works:**\nNormal query: SELECT * FROM users WHERE username='admin' AND password='pass'\nMalicious input: admin' --\nResult: SELECT * FROM users WHERE username='admin' -- ' AND password='anything'\n\n**Test payloads:** /payload sqli`,
-                'xss': `📚 **XSS Lesson**\n\n**What is Cross-Site Scripting?**\nInjecting malicious JavaScript into web pages.\n\n**Types:**\n1. Reflected XSS\n2. Stored XSS\n3. DOM-based XSS\n\n**Test payloads:** /payload xss`,
-                'ssti': `📚 **SSTI Lesson**\n\n**What is Server-Side Template Injection?**\nAttacker injects template engine code into server-side rendering.\n\n**Detection:**\nTry {{7*7}} or ${7*7} - if you see 49, SSTI exists!\n\n**Test payloads:** /payload ssti`
+                'sqli': `📚 **SQL Injection Lesson**\n\n**What is SQL Injection?**\nSQL injection occurs when user input is inserted directly into SQL queries without sanitization.`,
+                'xss': `📚 **XSS Lesson**\n\n**What is XSS?**\nInjecting malicious JavaScript into web pages.`
             };
-            
             if (topic && lessons[topic]) {
                 hideTypingIndicator();
                 const messageDiv = document.createElement("div");
@@ -429,24 +557,40 @@ async function sendMessage() {
                 const textDiv = messageDiv.querySelector(".message-text");
                 await typeMessage(textDiv, lessons[topic]);
                 addMessageToCurrentChat('assistant', lessons[topic]);
+                addToLocalHistory('assistant', lessons[topic]);
                 if (autoPlayEnabled) textToSpeech(lessons[topic], currentLanguage);
                 addAudioControls(messageDiv, lessons[topic], currentLanguage);
                 return;
             }
         }
+
+        // Handle new chat command
+        if (message === '/new' || message === '/clear') {
+            createNewChat();
+            hideTypingIndicator();
+            addSystemMessage("✨ New conversation started! Previous chat saved in sidebar.");
+            return;
+        }
+
+        // Default: Use Groq API with context
+        const context = getConversationContext();
         
-        // Use Groq API for other questions
-        const response = await fetch(`${API_URL}/api/chat`, {
+        const response = await apiCall('/api/chat', {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ message: message, language: currentLanguage })
+            body: JSON.stringify({ 
+                message: message, 
+                language: currentLanguage,
+                session_id: currentSessionId,
+                context: context
+            })
         });
-        
+
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        
+
         const data = await response.text();
         hideTypingIndicator();
-        
+
         const messageDiv = document.createElement("div");
         messageDiv.className = "message assistant";
         messageDiv.innerHTML = `
@@ -460,23 +604,58 @@ async function sendMessage() {
             </div>
         `;
         container.appendChild(messageDiv);
-        
+
         const textDiv = messageDiv.querySelector(".message-text");
         await typeMessage(textDiv, data);
-        
+
         addMessageToCurrentChat('assistant', data);
-        
+        addToLocalHistory('assistant', data);
+
         if (autoPlayEnabled) {
             textToSpeech(data, currentLanguage);
         }
-        
+
         addAudioControls(messageDiv, data, currentLanguage);
-        
+
     } catch (error) {
         hideTypingIndicator();
-        console.error(error);
-        addErrorMessage(error.message);
+        if (error.message !== 'CANCELLED') {
+            console.error(error);
+            addErrorMessage(error.message);
+        }
     }
+}
+
+function formatReconResults(data) {
+    let results = `✅ **Recon Complete - ${data.target}**\n\n`;
+    results += `📊 **Summary**\n`;
+    results += `• Subdomains found: ${data.summary?.subdomains_found || 0}\n`;
+    results += `• Technologies detected: ${data.summary?.technologies_found || 0}\n`;
+    results += `• Endpoints discovered: ${data.summary?.endpoints_found || 0}\n`;
+    results += `• Secrets found: ${data.summary?.secrets_found || 0}\n\n`;
+    
+    if (data.findings?.subdomains?.length > 0) {
+        results += `🔹 **Subdomains Found:**\n`;
+        data.findings.subdomains.slice(0, 15).forEach(s => results += `  • ${s}\n`);
+        results += `\n`;
+    }
+    
+    return results;
+}
+
+function formatCVEResult(data, cveId) {
+    if (!data || data.error) {
+        return `🔍 **${cveId}**\n\n❌ CVE not found or error occurred.\n\nCheck the ID format (e.g., CVE-2024-6387)`;
+    }
+    return `🔍 **${cveId}**\n\n**Summary:** ${data.summary || 'No summary available'}\n\n**CVSS Score:** ${data.cvss || 'N/A'}\n\n**Published:** ${data.published || 'N/A'}`;
+}
+
+function getHelpText() {
+    return `🤖 **Cy30rt_AI Commands**\n\n🔍 **RECONNAISSANCE:**\n/recon <target> - Fast recon\n/fullrecon <target> - Complete workflow\n\n💉 **PAYLOADS:**\n/payload sqli - SQL injection\n/payload xss - XSS\n/payload ssti - SSTI\n/payload lfi - LFI/RFI\n/payload csrf - CSRF\n\n📋 **INTELLIGENCE:**\n/cve <id> - Look up CVE\n\n📚 **LEARNING:**\n/learn sqli - SQL lesson\n/learn xss - XSS lesson\n\n🛑 **CONTROL:**\n/cancel - Stop current operation\n/stop - Same as cancel\n/new - Start new chat\n\n💬 **GENERAL:**\n/help - Show this\n/who - About creator\n\n🌍 **N-ATLAS:** Supports Hausa (🇳🇬), Yoruba (🇳🇬), Igbo (🇳🇬)`;
+}
+
+function getWhoText() {
+    return `🤖 **Cy30rt_AI**\n\nCreated by **Abdulbasid Yakubu (cy30rt)** - Cybersecurity Professional\n\n**Features:**\n• Real reconnaissance tools (Reconix, Amass, Nuclei, etc.)\n• Payload generation (SQLi, XSS, SSTI, LFI, CSRF)\n• CVE lookup\n• Voice input with adjustable speed/pitch\n• 15+ languages support including 🇳🇬 Hausa/Yoruba/Igbo via N-ATLAS\n• Chat history\n• Conversation memory - I remember our chat!\n• /cancel to stop any operation\n\n⚠️ Always test on authorized targets only!`;
 }
 
 function sendExample(prompt) {
@@ -505,21 +684,21 @@ function addErrorMessage(error) {
 function addAudioControls(messageDiv, text, language) {
     const existing = messageDiv.querySelector(".audio-controls");
     if (existing) existing.remove();
-    
+
     const controlsDiv = document.createElement("div");
     controlsDiv.className = "audio-controls";
-    
+
     const playBtn = document.createElement("button");
     playBtn.className = "audio-btn";
     playBtn.textContent = "Play Audio";
-    
+
     const stopBtn = document.createElement("button");
     stopBtn.className = "audio-btn";
     stopBtn.textContent = "Stop";
-    
+
     let isPlaying = false;
-    
-    playBtn.onclick = async () => {
+
+    playBtn.onclick = async() => {
         if (isPlaying) {
             window.speechSynthesis.cancel();
             playBtn.textContent = "Play Audio";
@@ -532,13 +711,13 @@ function addAudioControls(messageDiv, text, language) {
         playBtn.textContent = "Play Audio";
         isPlaying = false;
     };
-    
+
     stopBtn.onclick = () => {
         window.speechSynthesis.cancel();
         playBtn.textContent = "Play Audio";
         isPlaying = false;
     };
-    
+
     controlsDiv.appendChild(playBtn);
     controlsDiv.appendChild(stopBtn);
     messageDiv.querySelector(".message-content").appendChild(controlsDiv);
@@ -552,7 +731,7 @@ function initAudio() {
         silent.volume = 0;
         window.speechSynthesis.speak(silent);
         audioInitialized = true;
-    } catch(e) {}
+    } catch (e) {}
 }
 
 async function textToSpeech(text, languageCode) {
@@ -575,14 +754,14 @@ async function textToSpeech(text, languageCode) {
 function setupVoiceInput() {
     const voiceBtn = document.getElementById("voiceBtn");
     if (!voiceBtn) return;
-    
+
     const SpeechRecognition = window.webkitSpeechRecognition || window.SpeechRecognition;
     if (!SpeechRecognition) { voiceBtn.style.opacity = "0.5"; return; }
-    
+
     const recognition = new SpeechRecognition();
     recognition.continuous = false;
     recognition.interimResults = false;
-    
+
     voiceBtn.onclick = () => {
         initAudio();
         recognition.lang = currentLanguage === "ar" ? "ar-SA" : "en-US";
@@ -590,7 +769,7 @@ function setupVoiceInput() {
         voiceBtn.classList.add("recording");
         showRecordingStatus();
     };
-    
+
     recognition.onresult = (event) => {
         const text = event.results[0][0].transcript;
         document.getElementById("messageInput").value = text;
@@ -598,9 +777,11 @@ function setupVoiceInput() {
         voiceBtn.classList.remove("recording");
         hideRecordingStatus();
     };
-    
-    recognition.onerror = () => { voiceBtn.classList.remove("recording"); hideRecordingStatus(); };
-    recognition.onend = () => { voiceBtn.classList.remove("recording"); hideRecordingStatus(); };
+
+    recognition.onerror = () => { voiceBtn.classList.remove("recording");
+        hideRecordingStatus(); };
+    recognition.onend = () => { voiceBtn.classList.remove("recording");
+        hideRecordingStatus(); };
 }
 
 function showRecordingStatus() {
@@ -613,7 +794,8 @@ function showRecordingStatus() {
 }
 
 function hideRecordingStatus() {
-    if (recordingStatusDiv) { recordingStatusDiv.remove(); recordingStatusDiv = null; }
+    if (recordingStatusDiv) { recordingStatusDiv.remove();
+        recordingStatusDiv = null; }
 }
 
 // ============ HELPER FUNCTIONS ============
@@ -645,14 +827,14 @@ function loadSettings() {
     voiceReadbackEnabled = localStorage.getItem("voice_readback") === "true";
     voiceSpeed = parseFloat(localStorage.getItem("voice_speed") || "1.0");
     voicePitch = parseFloat(localStorage.getItem("voice_pitch") || "1.0");
-    
+
     const autoToggle = document.getElementById("autoPlayToggle");
     const readbackToggle = document.getElementById("voiceReadbackToggle");
     const speedSlider = document.getElementById("voiceSpeed");
     const pitchSlider = document.getElementById("voicePitch");
     const speedVal = document.getElementById("speedValue");
     const pitchVal = document.getElementById("pitchValue");
-    
+
     if (autoToggle) autoToggle.checked = autoPlayEnabled;
     if (readbackToggle) readbackToggle.checked = voiceReadbackEnabled;
     if (speedSlider) speedSlider.value = voiceSpeed;
@@ -666,12 +848,12 @@ function saveSettings() {
     voiceReadbackEnabled = document.getElementById("voiceReadbackToggle")?.checked || false;
     voiceSpeed = parseFloat(document.getElementById("voiceSpeed")?.value || "1.0");
     voicePitch = parseFloat(document.getElementById("voicePitch")?.value || "1.0");
-    
+
     localStorage.setItem("auto_play", autoPlayEnabled);
     localStorage.setItem("voice_readback", voiceReadbackEnabled);
     localStorage.setItem("voice_speed", voiceSpeed);
     localStorage.setItem("voice_pitch", voicePitch);
-    
+
     const speedVal = document.getElementById("speedValue");
     const pitchVal = document.getElementById("pitchValue");
     if (speedVal) speedVal.textContent = voiceSpeed === 1.0 ? "Normal" : `${voiceSpeed.toFixed(1)}x`;
@@ -712,46 +894,53 @@ function toggleMobileMenu() {
     document.getElementById("sidebar").classList.toggle("open");
 }
 
+// ============ EXPORT FUNCTIONS FOR GLOBAL ACCESS ============
+window.switchChat = switchChat;
+window.sendExample = sendExample;
+window.stopGeneration = stopGeneration;
+
 // ============ INITIALIZE ============
 document.addEventListener("DOMContentLoaded", () => {
-    console.log("Cy30rt_AI Ready - Bug Bounty Edition with Reconix");
+    console.log("Cy30rt_AI Ready - Full Features with N-ATLAS and Stop Button");
     
+    initSession();
     initChatHistory();
     loadSettings();
     renderLanguageGrid();
-    
+
     document.getElementById("sendBtn")?.addEventListener("click", sendMessage);
+    document.getElementById("stopBtn")?.addEventListener("click", stopGeneration);
     document.getElementById("settingsBtn")?.addEventListener("click", showSettingsModal);
     document.getElementById("languageBtn")?.addEventListener("click", showLanguageModal);
     document.getElementById("mobileMenuBtn")?.addEventListener("click", toggleMobileMenu);
-    
+
     document.getElementById("messageInput")?.addEventListener("keypress", (e) => {
         if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
             sendMessage();
         }
     });
-    
+
     document.getElementById("messageInput")?.addEventListener("input", function(e) {
         e.target.style.height = "auto";
         e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px";
     });
-    
+
     document.querySelector(".modal-close")?.addEventListener("click", closeLanguageModal);
     document.querySelector(".modal-close-settings")?.addEventListener("click", closeSettingsModal);
-    
+
     document.getElementById("autoPlayToggle")?.addEventListener("change", saveSettings);
     document.getElementById("voiceReadbackToggle")?.addEventListener("change", saveSettings);
     document.getElementById("voiceSpeed")?.addEventListener("input", saveSettings);
     document.getElementById("voicePitch")?.addEventListener("input", saveSettings);
-    
+
     setupVoiceInput();
-    
+
     window.onclick = (event) => {
         if (event.target === document.getElementById("languageModal")) closeLanguageModal();
         if (event.target === document.getElementById("settingsModal")) closeSettingsModal();
     };
-    
+
     if (document.getElementById("sidebar")) {
         document.addEventListener("click", function(e) {
             const sidebar = document.getElementById("sidebar");
@@ -761,12 +950,9 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         });
     }
-    
+
     const savedLang = localStorage.getItem("cy30rt_language");
     if (savedLang && typeof LANGUAGES !== 'undefined' && LANGUAGES[savedLang]) {
         currentLanguage = savedLang;
     }
 });
-
-window.switchChat = switchChat;
-window.sendExample = sendExample;
