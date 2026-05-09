@@ -371,7 +371,7 @@ body {
     30% { transform: translateY(-6px); opacity: 1; }
 }
 
-/* ============ INPUT AREA - EXACTLY LIKE DEEPSEEK ============ */
+/* ============ INPUT AREA - EXACTLY LIKE DEEPSEEK WITH STOP BUTTON ============ */
 .input-area {
     padding: 0 24px 32px;
     background: transparent;
@@ -418,6 +418,30 @@ body {
 .input-actions {
     display: flex;
     gap: 4px;
+}
+
+.stop-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 6px;
+    border-radius: 50%;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.stop-btn:hover {
+    background: rgba(239,68,68,0.2);
+    color: var(--danger);
+}
+
+.stop-btn.active {
+    background: rgba(239,68,68,0.2);
+    color: var(--danger);
+    animation: pulseRed 1s infinite;
 }
 
 .voice-btn, .send-btn {
