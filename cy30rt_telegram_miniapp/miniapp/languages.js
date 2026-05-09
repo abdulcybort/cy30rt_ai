@@ -1,6 +1,8 @@
 const LANGUAGES = {
     en: { name: "English", native: "English", flag: "🇬🇧", dir: "ltr", code: "en" },
     ha: { name: "Hausa", native: "Hausa", flag: "🇳🇬", dir: "ltr", code: "ha" },
+    yo: { name: "Yoruba", native: "Yorùbá", flag: "🇳🇬", dir: "ltr", code: "yo" },
+    ig: { name: "Igbo", native: "Igbo", flag: "🇳🇬", dir: "ltr", code: "ig" },
     ar: { name: "Arabic", native: "العربية", flag: "🇸🇦", dir: "rtl", code: "ar" },
     es: { name: "Spanish", native: "Español", flag: "🇪🇸", dir: "ltr", code: "es" },
     fr: { name: "French", native: "Français", flag: "🇫🇷", dir: "ltr", code: "fr" },
@@ -17,20 +19,29 @@ const LANGUAGES = {
 };
 
 const UI_TEXTS = {
-    en: { online: "Operational", typing: "Processing" },
-    ha: { online: "Kan layi", typing: "Ana sarrafawa" },
-    ar: { online: "متصل", typing: "جاري المعالجة" }
+    en: { online: "Operational", typing: "Cy30rt_AI is thinking", n_atlas: "🇳🇬 N-ATLAS Enabled" },
+    ha: { online: "Kan layi", typing: "Cy30rt_AI yana tunani", n_atlas: "🇳🇬 N-ATLAS Kunna" },
+    yo: { online: "Nṣiṣẹ", typing: "Cy30rt_AI n ronu", n_atlas: "🇳🇬 N-ATLAS Ṣiṣẹ" },
+    ig: { online: "Na-arụ ọrụ", typing: "Cy30rt_AI na-eche echiche", n_atlas: "🇳🇬 N-ATLAS Gbanyere" },
+    ar: { online: "متصل", typing: "Cy30rt_AI يفكر", n_atlas: "🇳🇬 تم تمكين N-ATLAS" }
 };
 
+let currentLanguage = "en";
+
 function renderLanguageGrid() {
-    const grid = document.getElementById("languageGrid");
+    const grid = document.getElementById("languageModalGrid");
     if (!grid) return;
     grid.innerHTML = "";
+    grid.className = "language-grid";
     Object.entries(LANGUAGES).forEach(([code, lang]) => {
-        const btn = document.createElement("button");
+        const btn = document.createElement("div");
         btn.className = "language-item";
         btn.onclick = () => selectLanguage(code);
-        btn.innerHTML = `<div class="language-flag">${lang.flag}</div><div class="language-name">${lang.name}</div><div class="language-native">${lang.native}</div>`;
+        btn.innerHTML = `
+            <div class="language-flag">${lang.flag}</div>
+            <div class="language-name">${lang.name}</div>
+            <div class="language-native">${lang.native}</div>
+        `;
         grid.appendChild(btn);
     });
 }
