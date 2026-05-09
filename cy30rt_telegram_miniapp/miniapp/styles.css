@@ -16,6 +16,27 @@
     --accent-hover: #2563eb;
     --danger: #ef4444;
 }
+.stop-btn {
+    background: rgba(239,68,68,0.15);
+    border: none;
+    color: #ef4444;
+    cursor: pointer;
+    padding: 6px;
+    border-radius: 50%;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.stop-btn:hover {
+    background: rgba(239,68,68,0.3);
+    transform: scale(1.05);
+}
+
+.stop-btn.active {
+    animation: pulseRed 1s infinite;
+}
 
 body {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
