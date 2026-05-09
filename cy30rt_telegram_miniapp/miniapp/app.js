@@ -1,4 +1,4 @@
-// Cy30rt_AI - COMPLETE VERSION with Stop Button + Conversation Memory + Hausa Support
+// Cy30rt_AI - Complete with FULL Conversation Memory + Hausa + Stop Button
 // Created by Abdulbasid Yakubu (cy30rt)
 
 const API_URL = "https://cy30rt-ai.onrender.com";
@@ -27,14 +27,15 @@ const voiceMap = {
     'tr': 'tr-TR', 'fa': 'fa-IR', 'ur': 'ur-PK'
 };
 
-// ============ CONVERSATION MEMORY ============
-// Stores chat history per session for context understanding
+// ============ CONVERSATION MEMORY (PREVIOUS CHAT UNDERSTANDING) ============
 let conversationMemory = {};
 
-function getConversationContext(chatId, lastNMessages = 5) {
+// Get recent messages for context
+function getConversationContext(chatId, lastNMessages = 6) {
     const chat = chatHistory.find(c => c.id === chatId);
-    if (!chat || !chat.messages) return [];
+    if (!chat || !chat.messages || chat.messages.length === 0) return [];
     
+    // Get last N messages for context (user + assistant)
     const recentMessages = chat.messages.slice(-lastNMessages);
     return recentMessages.map(msg => ({
         role: msg.role === 'user' ? 'user' : 'assistant',
@@ -42,14 +43,23 @@ function getConversationContext(chatId, lastNMessages = 5) {
     }));
 }
 
+// Store message in memory
 function addToConversationMemory(chatId, role, content) {
     if (!conversationMemory[chatId]) {
         conversationMemory[chatId] = [];
     }
     conversationMemory[chatId].push({ role, content, timestamp: Date.now() });
     
-    if (conversationMemory[chatId].length > 50) {
-        conversationMemory[chatId] = conversationMemory[chatId].slice(-50);
+    // Keep only last 100 messages
+    if (conversationMemory[chatId].length > 100) {
+        conversationMemory[chatId] = conversationMemory[chatId].slice(-100);
+    }
+}
+
+// Clear memory for a chat
+function clearConversationMemory(chatId) {
+    if (conversationMemory[chatId]) {
+        delete conversationMemory[chatId];
     }
 }
 
@@ -74,6 +84,16 @@ function hideStopButton() {
     if (stopBtn) stopBtn.style.display = "none";
 }
 
+function addSystemMessage(text) {
+    const container = document.getElementById("messagesContainer");
+    if (!container) return;
+    const sysDiv = document.createElement("div");
+    sysDiv.className = "message system";
+    sysDiv.innerHTML = `<div class="message-avatar">ℹ️</div><div class="message-content"><div class="message-text" style="background: rgba(59,130,246,0.1); text-align: center; font-size: 0.85rem;">${escapeHtml(text)}</div></div>`;
+    container.appendChild(sysDiv);
+    scrollToBottom();
+}
+
 // ============ CHAT HISTORY ============
 function initChatHistory() {
     const saved = localStorage.getItem("cy30rt_chats");
@@ -90,7 +110,7 @@ function initChatHistory() {
             conversationMemory = JSON.parse(savedMemory);
         } catch(e) {}
     }
-    
+
     if (chatHistory.length === 0) {
         createNewChat();
     } else {
@@ -130,12 +150,13 @@ function switchChat(chatId) {
 function loadCurrentChat() {
     const chat = chatHistory.find(c => c.id === currentChatId);
     const container = document.getElementById("messagesContainer");
-    
+    if (!container) return;
+
     if (!chat || chat.messages.length === 0) {
         container.innerHTML = getWelcomeHTML();
         return;
     }
-    
+
     container.innerHTML = '';
     chat.messages.forEach(msg => {
         if (msg.role === 'user') {
@@ -150,12 +171,12 @@ function loadCurrentChat() {
 function renderHistoryList() {
     const historyList = document.getElementById("historyList");
     if (!historyList) return;
-    
+
     if (chatHistory.length === 0) {
         historyList.innerHTML = '<div style="padding: 12px; text-align: center; color: #666;">No chats yet</div>';
         return;
     }
-    
+
     historyList.innerHTML = chatHistory.map(chat => `
         <div class="history-item ${currentChatId === chat.id ? 'active' : ''}" onclick="switchChat('${chat.id}')">
             ${escapeHtml(chat.title.substring(0, 30))}
@@ -166,7 +187,7 @@ function renderHistoryList() {
 function addMessageToCurrentChat(role, content) {
     const chat = chatHistory.find(c => c.id === currentChatId);
     if (!chat) return;
-    
+
     chat.messages.push({
         role: role,
         content: content,
@@ -176,11 +197,11 @@ function addMessageToCurrentChat(role, content) {
     
     // Add to conversation memory for context
     addToConversationMemory(currentChatId, role, content);
-    
+
     if (role === 'user' && chat.messages.length === 1) {
         chat.title = content.substring(0, 30) + (content.length > 30 ? '...' : '');
     }
-    
+
     saveChats();
     renderHistoryList();
 }
@@ -190,7 +211,7 @@ function getWelcomeHTML() {
         <div class="welcome-screen">
             <div class="welcome-icon">🤖</div>
             <h1>Cy30rt_AI</h1>
-            <p>Your cybersecurity & bug bounty assistant</p>
+            <p>Your cybersecurity & bug bounty assistant<br><span style="font-size: 0.8rem;">💡 I remember our conversation! You can ask follow-up questions.</span></p>
             <div class="example-prompts">
                 <button class="example-btn" onclick="sendExample('What is SQL injection?')">Learn SQLi</button>
                 <button class="example-btn" onclick="sendExample('/recon scanme.nmap.org')">Run Recon</button>
@@ -220,22 +241,6 @@ function addMessageToUI(role, content, timestamp = null) {
         </div>
     `;
     container.appendChild(messageDiv);
-    scrollToBottom();
-}
-
-function addSystemMessage(text) {
-    const container = document.getElementById("messagesContainer");
-    const sysDiv = document.createElement("div");
-    sysDiv.className = "message system";
-    sysDiv.innerHTML = `
-        <div class="message-avatar">ℹ️</div>
-        <div class="message-content">
-            <div class="message-text" style="background: rgba(59,130,246,0.1); text-align: center; font-size: 0.85rem;">
-                ${escapeHtml(text)}
-            </div>
-        </div>
-    `;
-    container.appendChild(sysDiv);
     scrollToBottom();
 }
 
@@ -277,18 +282,16 @@ async function apiCall(endpoint, options) {
             ...options,
             signal: currentAbortController.signal
         });
-        isGenerating = false;
-        hideStopButton();
-        currentAbortController = null;
         return response;
     } catch (error) {
-        isGenerating = false;
-        hideStopButton();
-        currentAbortController = null;
         if (error.name === 'AbortError') {
             throw new Error('CANCELLED');
         }
         throw error;
+    } finally {
+        isGenerating = false;
+        hideStopButton();
+        currentAbortController = null;
     }
 }
 
@@ -313,17 +316,17 @@ async function runReconix(target, options = {}) {
     `;
     container.appendChild(statusDiv);
     scrollToBottom();
-    
+
     try {
-        const response = await fetch(`${API_URL}/api/recon`, {
+        const response = await apiCall('/api/recon', {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ target: target, options: options })
         });
-        
+
         const data = await response.json();
         const statusText = document.getElementById(`reconStatus_${messageId}`);
-        
+
         if (data.success) {
             let resultText = `✅ **Recon Complete - ${target}**\n\n`;
             resultText += `📊 **Summary:**\n`;
@@ -332,37 +335,37 @@ async function runReconix(target, options = {}) {
             resultText += `• Endpoints discovered: ${data.summary.endpoints_found}\n`;
             resultText += `• Secrets found: ${data.summary.secrets_found}\n`;
             resultText += `• Vulnerabilities: ${data.summary.vulnerabilities_found}\n\n`;
-            
+
             if (data.findings.subdomains.length > 0) {
                 resultText += `🔹 **Subdomains:**\n`;
                 data.findings.subdomains.slice(0, 10).forEach(s => resultText += `  • ${s}\n`);
                 resultText += `\n`;
             }
-            
+
             if (data.findings.technologies.length > 0) {
                 resultText += `🔹 **Technologies:**\n`;
                 data.findings.technologies.slice(0, 10).forEach(t => resultText += `  • ${t}\n`);
                 resultText += `\n`;
             }
-            
+
             if (data.findings.endpoints.length > 0) {
                 resultText += `🔹 **Key Endpoints:**\n`;
                 data.findings.endpoints.slice(0, 10).forEach(e => resultText += `  • ${e}\n`);
                 resultText += `\n`;
             }
-            
+
             if (data.findings.secrets.length > 0) {
                 resultText += `⚠️ **Potential Secrets Found - Review Carefully!**\n`;
                 data.findings.secrets.slice(0, 5).forEach(s => resultText += `  • ${s}\n`);
                 resultText += `\n`;
             }
-            
+
             resultText += `💡 **Next Steps:**\n`;
             resultText += `• Ask me: "Analyze these findings"\n`;
             resultText += `• Run: /payload sqli for SQL injection payloads\n`;
             resultText += `• Check subdomains with /recon [subdomain]\n\n`;
             resultText += `⚠️ Only test on authorized targets!\n\nStay secure. - Cy30rt_AI`;
-            
+
             if (statusText) {
                 statusText.innerHTML = formatMessage(escapeHtml(resultText));
             }
@@ -375,7 +378,7 @@ async function runReconix(target, options = {}) {
         }
     } catch (error) {
         const statusText = document.getElementById(`reconStatus_${messageId}`);
-        if (statusText) {
+        if (statusText && error.message !== 'CANCELLED') {
             statusText.innerHTML = `❌ **Error:** ${escapeHtml(error.message)}`;
         }
         return null;
@@ -387,29 +390,34 @@ async function sendMessage() {
     const input = document.getElementById("messageInput");
     let message = input.value.trim();
     if (!message) return;
-    
+
     input.value = "";
     input.style.height = "auto";
-    
+
     const container = document.getElementById("messagesContainer");
     if (container.querySelector(".welcome-screen")) {
         container.innerHTML = '';
     }
-    
+
     addMessageToUI('user', message);
     addMessageToCurrentChat('user', message);
-    
+
     showTypingIndicator();
-    
+
     try {
-        // Get conversation context for understanding
-        const context = getConversationContext(currentChatId, 5);
+        // Get conversation context for understanding (PREVIOUS CHAT MEMORY)
+        const context = getConversationContext(currentChatId, 8);
         
+        // Log context for debugging
+        if (context.length > 0) {
+            console.log("📚 Conversation context loaded:", context.length, "previous messages");
+        }
+
         // Check for recon commands
         let isReconCommand = false;
         let target = null;
         let options = {};
-        
+
         if (message.startsWith('/recon')) {
             target = message.replace('/recon', '').trim();
             isReconCommand = true;
@@ -432,13 +440,13 @@ async function sendMessage() {
                 options = { deep: true, js: true, historical: true, threads: 20 };
             }
         }
-        
+
         if (isReconCommand && target) {
             hideTypingIndicator();
             await runReconix(target, options);
             return;
         }
-        
+
         // Check for payload commands
         if (message.startsWith('/payload')) {
             const type = message.replace('/payload', '').trim().toLowerCase();
@@ -448,7 +456,7 @@ async function sendMessage() {
                 'ssti': `🧠 **SSTI Payloads**\n\n**Jinja2 (Python):**\n{{7*7}}\n{{config}}\n{{''.__class__.__mro__[2].__subclasses__()[40]('/etc/passwd').read()}}`,
                 'lfi': `📂 **LFI/RFI Payloads**\n\n**Basic LFI:**\n../../../../etc/passwd\n../../../etc/passwd%00\nphp://filter/convert.base64-encode/resource=index.php`
             };
-            
+
             if (type && payloads[type]) {
                 hideTypingIndicator();
                 const messageDiv = document.createElement("div");
@@ -463,7 +471,7 @@ async function sendMessage() {
                 return;
             }
         }
-        
+
         // Check for CVE command
         if (message.startsWith('/cve')) {
             const cveId = message.replace('/cve', '').trim().toUpperCase();
@@ -482,10 +490,10 @@ async function sendMessage() {
                 return;
             }
         }
-        
+
         // Check for help command
         if (message === '/help' || message === '/commands') {
-            const helpResponse = `🤖 **Cy30rt_AI Complete Commands**\n\n📚 **LEARNING MODE:**\n/learn sqli - SQL injection tutorial\n/learn xss - XSS tutorial\n/learn ssti - SSTI tutorial\n\n🔍 **BUG BOUNTY MODE:**\n/recon <target> - Run automated reconnaissance\n/payload <type> - Generate payloads (sqli, xss, ssti, lfi)\n/cve <id> - Look up CVE information\n\n💬 **GENERAL:**\n/help - Show this help\n/who - About the creator\n/new - Start new chat\n\n⚠️ Always test only on authorized targets!\n\nStay secure. - Cy30rt_AI`;
+            const helpResponse = `🤖 **Cy30rt_AI Complete Commands**\n\n📚 **LEARNING MODE:**\n/learn sqli - SQL injection tutorial\n/learn xss - XSS tutorial\n/learn ssti - SSTI tutorial\n\n🔍 **BUG BOUNTY MODE:**\n/recon <target> - Run automated reconnaissance\n/payload <type> - Generate payloads (sqli, xss, ssti, lfi)\n/cve <id> - Look up CVE information\n\n💬 **GENERAL:**\n/help - Show this help\n/who - About the creator\n/new - Start new chat\n\n💡 **CONVERSATION MEMORY:**\nI remember our previous messages! You can ask follow-up questions like "What about XSS?" after learning about SQLi.\n\n⚠️ Always test only on authorized targets!\n\nStay secure. - Cy30rt_AI`;
             hideTypingIndicator();
             const messageDiv = document.createElement("div");
             messageDiv.className = "message assistant";
@@ -498,10 +506,10 @@ async function sendMessage() {
             addAudioControls(messageDiv, helpResponse, currentLanguage);
             return;
         }
-        
+
         // Check for who command
         if (message === '/who' || message === '/creator' || message === '/about') {
-            const whoResponse = `🤖 **Cy30rt_AI**\n\nI am a professional cybersecurity and bug bounty assistant created by **Abdulbasid Yakubu (cy30rt)** , a cybersecurity professional dedicated to making security education accessible.\n\n**My capabilities:**\n• Teach cybersecurity concepts\n• Run reconnaissance on authorized targets (Reconix)\n• Generate attack payloads\n• Look up CVE information\n• 15 languages support\n• Voice interaction with adjustable speed\n\n⚠️ Always practice on authorized systems only!\n\nStay secure. - Cy30rt_AI`;
+            const whoResponse = `🤖 **Cy30rt_AI**\n\nI am a professional cybersecurity and bug bounty assistant created by **Abdulbasid Yakubu (cy30rt)** , a cybersecurity professional dedicated to making security education accessible.\n\n**My capabilities:**\n• Teach cybersecurity concepts\n• Run reconnaissance on authorized targets (Reconix)\n• Generate attack payloads\n• Look up CVE information\n• 15 languages support\n• Voice interaction with adjustable speed\n• **Remember previous conversations** - ask follow-up questions!\n\n⚠️ Always practice on authorized systems only!\n\nStay secure. - Cy30rt_AI`;
             hideTypingIndicator();
             const messageDiv = document.createElement("div");
             messageDiv.className = "message assistant";
@@ -514,23 +522,23 @@ async function sendMessage() {
             addAudioControls(messageDiv, whoResponse, currentLanguage);
             return;
         }
-        
+
         // Check for new chat command
         if (message === '/new' || message === '/clear') {
             createNewChat();
             hideTypingIndicator();
             return;
         }
-        
+
         // Check for learn command
         if (message.startsWith('/learn')) {
             const topic = message.replace('/learn', '').trim().toLowerCase();
             const lessons = {
-                'sqli': `📚 **SQL Injection Lesson**\n\n**What is SQL Injection?**\nSQL injection occurs when user input is inserted directly into SQL queries without sanitization.\n\n**How it works:**\nNormal query: SELECT * FROM users WHERE username='admin' AND password='pass'\nMalicious input: admin' --\nResult: SELECT * FROM users WHERE username='admin' -- ' AND password='anything'\n\n**Test payloads:** /payload sqli`,
-                'xss': `📚 **XSS Lesson**\n\n**What is Cross-Site Scripting?**\nInjecting malicious JavaScript into web pages.\n\n**Types:**\n1. Reflected XSS\n2. Stored XSS\n3. DOM-based XSS\n\n**Test payloads:** /payload xss`,
+                'sqli': `📚 **SQL Injection Lesson**\n\n**What is SQL Injection?**\nSQL injection occurs when user input is inserted directly into SQL queries without sanitization.\n\n**How it works:**\nNormal query: SELECT * FROM users WHERE username='admin' AND password='pass'\nMalicious input: admin' --\nResult: SELECT * FROM users WHERE username='admin' -- ' AND password='anything'\n\n**Test payloads:** /payload sqli\n\n💡 Ask me: "How to prevent SQL injection?" after this!`,
+                'xss': `📚 **XSS Lesson**\n\n**What is Cross-Site Scripting?**\nInjecting malicious JavaScript into web pages.\n\n**Types:**\n1. Reflected XSS\n2. Stored XSS\n3. DOM-based XSS\n\n**Test payloads:** /payload xss\n\n💡 Ask me: "What's the difference between reflected and stored XSS?"`,
                 'ssti': `📚 **SSTI Lesson**\n\n**What is Server-Side Template Injection?**\nAttacker injects template engine code into server-side rendering.\n\n**Detection:**\nTry {{7*7}} or ${7*7} - if you see 49, SSTI exists!\n\n**Test payloads:** /payload ssti`
             };
-            
+
             if (topic && lessons[topic]) {
                 hideTypingIndicator();
                 const messageDiv = document.createElement("div");
@@ -545,24 +553,24 @@ async function sendMessage() {
                 return;
             }
         }
-        
-        // Use Groq API with conversation context
-        const response = await fetch(`${API_URL}/api/chat`, {
+
+        // Use Groq API with conversation context (THIS ENABLES PREVIOUS CHAT UNDERSTANDING)
+        const response = await apiCall('/api/chat', {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ 
                 message: message, 
                 language: currentLanguage,
-                context: context,
+                context: context,  // ← Sends previous messages to backend
                 session_id: currentChatId
             })
         });
-        
+
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        
+
         const data = await response.text();
         hideTypingIndicator();
-        
+
         const messageDiv = document.createElement("div");
         messageDiv.className = "message assistant";
         messageDiv.innerHTML = `
@@ -576,24 +584,22 @@ async function sendMessage() {
             </div>
         `;
         container.appendChild(messageDiv);
-        
+
         const textDiv = messageDiv.querySelector(".message-text");
         await typeMessage(textDiv, data);
-        
+
         addMessageToCurrentChat('assistant', data);
-        
+
         if (autoPlayEnabled) {
             textToSpeech(data, currentLanguage);
         }
-        
+
         addAudioControls(messageDiv, data, currentLanguage);
-        
+
     } catch (error) {
         hideTypingIndicator();
         console.error(error);
-        if (error.message === 'CANCELLED') {
-            addSystemMessage("⏹️ Response generation stopped by user.");
-        } else {
+        if (error.message !== 'CANCELLED') {
             addErrorMessage(error.message);
         }
     }
@@ -625,20 +631,20 @@ function addErrorMessage(error) {
 function addAudioControls(messageDiv, text, language) {
     const existing = messageDiv.querySelector(".audio-controls");
     if (existing) existing.remove();
-    
+
     const controlsDiv = document.createElement("div");
     controlsDiv.className = "audio-controls";
-    
+
     const playBtn = document.createElement("button");
     playBtn.className = "audio-btn";
     playBtn.textContent = "Play Audio";
-    
+
     const stopBtn = document.createElement("button");
     stopBtn.className = "audio-btn";
     stopBtn.textContent = "Stop";
-    
+
     let isPlaying = false;
-    
+
     playBtn.onclick = async() => {
         if (isPlaying) {
             window.speechSynthesis.cancel();
@@ -652,19 +658,18 @@ function addAudioControls(messageDiv, text, language) {
         playBtn.textContent = "Play Audio";
         isPlaying = false;
     };
-    
+
     stopBtn.onclick = () => {
         window.speechSynthesis.cancel();
         playBtn.textContent = "Play Audio";
         isPlaying = false;
     };
-    
+
     controlsDiv.appendChild(playBtn);
     controlsDiv.appendChild(stopBtn);
     messageDiv.querySelector(".message-content").appendChild(controlsDiv);
 }
 
-// ============ AUDIO FUNCTIONS ============
 function initAudio() {
     if (audioInitialized) return;
     try {
@@ -682,14 +687,11 @@ async function textToSpeech(text, languageCode) {
         window.speechSynthesis.cancel();
         const cleanText = text.replace(/[\[\]\(\)\*\_\#]/g, '').substring(0, 1500);
         const utterance = new SpeechSynthesisUtterance(cleanText);
-        
-        // For Hausa, use specific voice
         if (languageCode === 'ha') {
             utterance.lang = 'ha-NG';
         } else {
             utterance.lang = voiceMap[languageCode] || 'en-US';
         }
-        
         utterance.rate = voiceSpeed;
         utterance.pitch = voicePitch;
         utterance.onend = () => resolve(true);
@@ -698,21 +700,19 @@ async function textToSpeech(text, languageCode) {
     });
 }
 
-// ============ VOICE INPUT ============
 function setupVoiceInput() {
     const voiceBtn = document.getElementById("voiceBtn");
     if (!voiceBtn) return;
-    
+
     const SpeechRecognition = window.webkitSpeechRecognition || window.SpeechRecognition;
     if (!SpeechRecognition) { voiceBtn.style.opacity = "0.5"; return; }
-    
+
     const recognition = new SpeechRecognition();
     recognition.continuous = false;
     recognition.interimResults = false;
-    
+
     voiceBtn.onclick = () => {
         initAudio();
-        // Support Hausa voice recognition
         if (currentLanguage === 'ha') {
             recognition.lang = 'ha-NG';
         } else if (currentLanguage === 'ar') {
@@ -724,7 +724,7 @@ function setupVoiceInput() {
         voiceBtn.classList.add("recording");
         showRecordingStatus();
     };
-    
+
     recognition.onresult = (event) => {
         const text = event.results[0][0].transcript;
         document.getElementById("messageInput").value = text;
@@ -732,7 +732,7 @@ function setupVoiceInput() {
         voiceBtn.classList.remove("recording");
         hideRecordingStatus();
     };
-    
+
     recognition.onerror = () => { voiceBtn.classList.remove("recording");
         hideRecordingStatus(); };
     recognition.onend = () => { voiceBtn.classList.remove("recording");
@@ -753,7 +753,6 @@ function hideRecordingStatus() {
         recordingStatusDiv = null; }
 }
 
-// ============ HELPER FUNCTIONS ============
 function showTypingIndicator() {
     const indicator = document.getElementById("typingIndicator");
     if (indicator) indicator.style.display = "flex";
@@ -776,20 +775,19 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
-// ============ SETTINGS ============
 function loadSettings() {
     autoPlayEnabled = localStorage.getItem("auto_play") === "true";
     voiceReadbackEnabled = localStorage.getItem("voice_readback") === "true";
     voiceSpeed = parseFloat(localStorage.getItem("voice_speed") || "1.0");
     voicePitch = parseFloat(localStorage.getItem("voice_pitch") || "1.0");
-    
+
     const autoToggle = document.getElementById("autoPlayToggle");
     const readbackToggle = document.getElementById("voiceReadbackToggle");
     const speedSlider = document.getElementById("voiceSpeed");
     const pitchSlider = document.getElementById("voicePitch");
     const speedVal = document.getElementById("speedValue");
     const pitchVal = document.getElementById("pitchValue");
-    
+
     if (autoToggle) autoToggle.checked = autoPlayEnabled;
     if (readbackToggle) readbackToggle.checked = voiceReadbackEnabled;
     if (speedSlider) speedSlider.value = voiceSpeed;
@@ -803,12 +801,12 @@ function saveSettings() {
     voiceReadbackEnabled = document.getElementById("voiceReadbackToggle")?.checked || false;
     voiceSpeed = parseFloat(document.getElementById("voiceSpeed")?.value || "1.0");
     voicePitch = parseFloat(document.getElementById("voicePitch")?.value || "1.0");
-    
+
     localStorage.setItem("auto_play", autoPlayEnabled);
     localStorage.setItem("voice_readback", voiceReadbackEnabled);
     localStorage.setItem("voice_speed", voiceSpeed);
     localStorage.setItem("voice_pitch", voicePitch);
-    
+
     const speedVal = document.getElementById("speedValue");
     const pitchVal = document.getElementById("pitchValue");
     if (speedVal) speedVal.textContent = voiceSpeed === 1.0 ? "Normal" : `${voiceSpeed.toFixed(1)}x`;
@@ -845,53 +843,51 @@ function renderLanguageGrid() {
     });
 }
 
-// ============ MOBILE MENU ============
 function toggleMobileMenu() {
     document.getElementById("sidebar").classList.toggle("open");
 }
 
-// ============ INITIALIZE ============
 document.addEventListener("DOMContentLoaded", () => {
-    console.log("Cy30rt_AI Ready - With Stop Button, Memory, and Hausa Support");
-    
+    console.log("Cy30rt_AI Ready - With FULL Conversation Memory, Hausa, and Stop Button");
+
     initChatHistory();
     loadSettings();
     renderLanguageGrid();
-    
+
     document.getElementById("sendBtn")?.addEventListener("click", sendMessage);
     document.getElementById("stopBtn")?.addEventListener("click", stopGeneration);
-    document.getElementById("newChatBtn")?.addEventListener("click", createNewChat);
     document.getElementById("settingsBtn")?.addEventListener("click", showSettingsModal);
     document.getElementById("languageBtn")?.addEventListener("click", showLanguageModal);
     document.getElementById("mobileMenuBtn")?.addEventListener("click", toggleMobileMenu);
-    
+    document.getElementById("newChatBtn")?.addEventListener("click", createNewChat);
+
     document.getElementById("messageInput")?.addEventListener("keypress", (e) => {
         if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
             sendMessage();
         }
     });
-    
+
     document.getElementById("messageInput")?.addEventListener("input", function(e) {
         e.target.style.height = "auto";
         e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px";
     });
-    
+
     document.querySelector(".modal-close")?.addEventListener("click", closeLanguageModal);
     document.querySelector(".modal-close-settings")?.addEventListener("click", closeSettingsModal);
-    
+
     document.getElementById("autoPlayToggle")?.addEventListener("change", saveSettings);
     document.getElementById("voiceReadbackToggle")?.addEventListener("change", saveSettings);
     document.getElementById("voiceSpeed")?.addEventListener("input", saveSettings);
     document.getElementById("voicePitch")?.addEventListener("input", saveSettings);
-    
+
     setupVoiceInput();
-    
+
     window.onclick = (event) => {
         if (event.target === document.getElementById("languageModal")) closeLanguageModal();
         if (event.target === document.getElementById("settingsModal")) closeSettingsModal();
     };
-    
+
     if (document.getElementById("sidebar")) {
         document.addEventListener("click", function(e) {
             const sidebar = document.getElementById("sidebar");
@@ -901,11 +897,13 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         });
     }
-    
+
     const savedLang = localStorage.getItem("cy30rt_language");
     if (savedLang && typeof LANGUAGES !== 'undefined' && LANGUAGES[savedLang]) {
         currentLanguage = savedLang;
     }
+    
+    console.log("💡 Conversation Memory Active - I remember our previous messages!");
 });
 
 window.switchChat = switchChat;
