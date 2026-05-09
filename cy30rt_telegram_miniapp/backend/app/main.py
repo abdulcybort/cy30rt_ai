@@ -3,10 +3,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from .ai_service import cy30rt_ai
 from pydantic import BaseModel
 import httpx
+import subprocess
 import json
 import os
 
-app = FastAPI(title="Cy30rt_AI API", version="5.0.0")
+app = FastAPI(title="Cy30rt_AI API", version="4.0.0")
 
 # CORS - Allow all origins
 app.add_middleware(
@@ -23,7 +24,10 @@ class ChatRequest(BaseModel):
     message: str
     language: str = "en"
     session_id: str = None
-    context: list = []
+
+class ReconRequest(BaseModel):
+    target: str
+    options: dict = {}
 
 @app.get("/")
 async def root():
@@ -31,25 +35,99 @@ async def root():
         "name": "Cy30rt_AI",
         "creator": "Abdulbasid Yakubu (cy30rt)",
         "status": "online",
-        "version": "5.0.0",
-        "features": ["Conversation Memory", "Stop Button", "Hausa Language", "Voice", "15 Languages", "Bug Bounty Recon"]
+        "version": "4.0.0",
+        "features": ["Teaching", "Bug Bounty", "Reconix Integration", "Voice", "15 Languages"]
     }
 
 @app.post("/api/chat")
 async def chat(request: ChatRequest):
-    """AI chat endpoint with context memory and conversation understanding"""
+    """AI chat endpoint - returns complete responses"""
     
     async def generate():
-        async for chunk in cy30rt_ai.chat(
-            request.message, 
-            request.language, 
-            request.context,
-            request.session_id
-        ):
+        async for chunk in cy30rt_ai.chat(request.message, request.language):
             yield chunk
     
     from fastapi.responses import StreamingResponse
     return StreamingResponse(generate(), media_type="text/plain")
+
+@app.post("/api/recon")
+async def run_recon(request: ReconRequest):
+    """Run Reconix scan on target - Integrated into AI"""
+    try:
+        target = request.target
+        options = request.options
+        
+        if not target:
+            return {"error": "No target provided", "success": False}
+        
+        # Build command
+        cmd = ["reconix", target]
+        
+        if options.get("deep"):
+            cmd.append("--deep")
+        if options.get("js"):
+            cmd.append("--js")
+        if options.get("historical"):
+            cmd.append("--historical")
+        if options.get("aggressive"):
+            cmd.append("--aggressive")
+        if options.get("threads"):
+            cmd.extend(["--threads", str(options["threads"])])
+        if options.get("output"):
+            cmd.extend(["--output", options["output"]])
+        
+        # Run command with timeout
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=300  # 5 minutes timeout
+        )
+        
+        output = result.stdout + result.stderr
+        
+        # Parse output for findings
+        findings = {
+            "subdomains": [],
+            "technologies": [],
+            "endpoints": [],
+            "secrets": [],
+            "vulnerabilities": []
+        }
+        
+        # Simple parsing of output
+        for line in output.split('\n'):
+            if '[SUBDOMAIN]' in line:
+                findings["subdomains"].append(line.replace('[SUBDOMAIN]', '').strip())
+            elif '[TECH]' in line:
+                findings["technologies"].append(line.replace('[TECH]', '').strip())
+            elif '[JS_ENDPOINT]' in line or '[API]' in line:
+                findings["endpoints"].append(line.split(']')[1].strip() if ']' in line else line)
+            elif '[SECRET]' in line or '[KEY]' in line:
+                findings["secrets"].append(line.split(']')[1].strip() if ']' in line else line)
+            elif '[CVE]' in line or '[VULN]' in line:
+                findings["vulnerabilities"].append(line.split(']')[1].strip() if ']' in line else line)
+        
+        return {
+            "success": True,
+            "target": target,
+            "output": output[:8000],  # Limit output size
+            "findings": findings,
+            "summary": {
+                "subdomains_found": len(findings["subdomains"]),
+                "technologies_found": len(findings["technologies"]),
+                "endpoints_found": len(findings["endpoints"]),
+                "secrets_found": len(findings["secrets"]),
+                "vulnerabilities_found": len(findings["vulnerabilities"])
+            }
+        }
+        
+    except subprocess.TimeoutExpired:
+        return {"error": "Scan timed out after 5 minutes", "success": False}
+    except FileNotFoundError:
+        return {"error": "Reconix not installed. Run: npm install -g @aquibk/reconix", "success": False}
+    except Exception as e:
+        return {"error": str(e), "success": False}
 
 @app.post("/webhook")
 async def webhook(request: Request):
@@ -62,102 +140,22 @@ async def webhook(request: Request):
             chat_id = msg["chat"]["id"]
             text = msg.get("text", "")
             
-            # Send typing action
-            async with httpx.AsyncClient() as client:
-                await client.post(
-                    f"https://api.telegram.org/bot{BOT_TOKEN}/sendChatAction",
-                    json={"chat_id": chat_id, "action": "typing"}
-                )
-            
-            if text == "/start" or text == "/help":
-                help_text = """🤖 **Cy30rt_AI - Cybersecurity Assistant**
-
-Created by Abdulbasid Yakubu (cy30rt)
-
-**Commands:**
-/recon <target> - Fast reconnaissance
-/payload <type> - Get payloads (sqli, xss, ssti, lfi)
-/cve <id> - Look up CVE
-/help - Show this help
-
-**Features:**
-• Remembers previous messages (context awareness)
-• Supports 15 languages including Hausa العربية English
-• Voice input and text-to-speech
-• Bug bounty reconnaissance tools
-
-⚠️ Type /help anytime
-
-Stay secure. - Cy30rt_AI"""
-                
-                async with httpx.AsyncClient() as client:
-                    await client.post(
-                        f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-                        json={"chat_id": chat_id, "text": help_text, "parse_mode": "Markdown"}
-                    )
-                
-                # Send Mini App button
+            if text == "/start":
                 async with httpx.AsyncClient() as client:
                     await client.post(
                         f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
                         json={
                             "chat_id": chat_id,
-                            "text": "🚀 Open the full AI experience:",
+                            "text": "🤖 Welcome to Cy30rt_AI!\n\nYour professional cybersecurity and bug bounty assistant.\n\nCreated by Abdulbasid Yakubu (cy30rt)\n\n✅ Features:\n• Cybersecurity Teaching\n• Bug Bounty Recon (Reconix)\n• Payload Generation\n• CVE Lookup\n• Voice Input\n• 15 Languages\n\nClick the button below to open the Mini App!",
                             "reply_markup": {
                                 "inline_keyboard": [[{
-                                    "text": "Open Cy30rt_AI Mini App",
+                                    "text": "🚀 Open Cy30rt_AI",
                                     "web_app": {"url": "https://cy30rt-miniapp.onrender.com"}
                                 }]]
                             }
                         }
                     )
-                return {"status": "ok"}
-            
-            # Handle other commands
-            elif text.startswith("/recon") or text.startswith("/payload") or text.startswith("/cve"):
-                # For commands, just echo that they work in Mini App
-                async with httpx.AsyncClient() as client:
-                    await client.post(
-                        f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-                        json={
-                            "chat_id": chat_id,
-                            "text": f"🔍 Command received: {text}\n\nFor full features including recon results, payloads, and CVE lookup, please open the Mini App:\nhttps://cy30rt-miniapp.onrender.com",
-                            "parse_mode": "Markdown"
-                        }
-                    )
-                return {"status": "ok"}
-            
-            # Handle regular messages with AI
-            else:
-                try:
-                    async with httpx.AsyncClient(timeout=60.0) as client:
-                        response = await client.post(
-                            "https://cy30rt-ai.onrender.com/api/chat",
-                            json={"message": text, "language": "en"}
-                        )
-                        ai_response = response.text
-                        
-                        if len(ai_response) > 4000:
-                            ai_response = ai_response[:4000] + "..."
-                        
-                        async with httpx.AsyncClient() as send_client:
-                            await send_client.post(
-                                f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-                                json={"chat_id": chat_id, "text": f"🤖 **Cy30rt_AI:**\n\n{ai_response}", "parse_mode": "Markdown"}
-                            )
-                except Exception as e:
-                    async with httpx.AsyncClient() as send_client:
-                        await send_client.post(
-                            f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-                            json={
-                                "chat_id": chat_id,
-                                "text": f"🤖 **Cy30rt_AI:**\n\nHello! I am Cy30rt_AI, your cybersecurity assistant created by Abdulbasid Yakubu (cy30rt).\n\nFor full features including voice, 15 languages, and bug bounty tools, please open the Mini App:\nhttps://cy30rt-miniapp.onrender.com",
-                                "parse_mode": "Markdown"
-                            }
-                        )
-        
         return {"status": "ok"}
-        
     except Exception as e:
         print(f"Webhook error: {e}")
         return {"status": "error", "message": str(e)}
