@@ -65,17 +65,21 @@
                     <div class="welcome-screen">
                         <div class="welcome-icon">🤖</div>
                         <h1>Cy30rt_AI</h1>
-                        <p>How can I help you with cybersecurity today?</p>
+                        <p>Your professional cybersecurity & bug bounty assistant</p>
                         <div class="example-prompts">
-                            <button class="example-btn" data-prompt="What is SQL injection? Explain with examples.">What is SQL injection?</button>
-                            <button class="example-btn" data-prompt="How to perform network reconnaissance?">How to perform network reconnaissance?</button>
-                            <button class="example-btn" data-prompt="Explain Cross-Site Scripting (XSS) attacks.">Explain XSS attacks</button>
+                            <button class="example-btn" onclick="sendExample('What is SQL injection?')">What is SQL injection?</button>
+                            <button class="example-btn" onclick="sendExample('/recon scanme.nmap.org')">Run Recon</button>
+                            <button class="example-btn" onclick="sendExample('/payload xss')">Get Payloads</button>
+                            <button class="example-btn" onclick="sendExample('/cve CVE-2024-6387')">Look up CVE</button>
+                        </div>
+                        <div class="creator-note">
+                            Created by Abdulbasid Yakubu (cy30rt) | Type /help for commands
                         </div>
                     </div>
                 </div>
             </div>
             
-            <!-- INPUT AREA - Exactly Like DeepSeek with STOP BUTTON ADDED -->
+            <!-- INPUT AREA - Exactly Like DeepSeek with STOP BUTTON -->
             <div class="input-area">
                 <div class="input-wrapper">
                     <textarea id="messageInput" rows="1" placeholder="Message Cy30rt_AI..."></textarea>
@@ -100,7 +104,7 @@
                     </div>
                 </div>
                 <div class="input-note">
-                    <span>Powered by Groq AI + Cerebras + Aya (Hausa)</span>
+                    <span>Powered by Groq AI + Cerebras + Hausa Support | Type /help for commands</span>
                 </div>
             </div>
             
