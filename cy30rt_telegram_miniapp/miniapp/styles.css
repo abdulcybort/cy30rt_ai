@@ -16,27 +16,6 @@
     --accent-hover: #2563eb;
     --danger: #ef4444;
 }
-.stop-btn {
-    background: rgba(239,68,68,0.15);
-    border: none;
-    color: #ef4444;
-    cursor: pointer;
-    padding: 6px;
-    border-radius: 50%;
-    transition: all 0.2s;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.stop-btn:hover {
-    background: rgba(239,68,68,0.3);
-    transform: scale(1.05);
-}
-
-.stop-btn.active {
-    animation: pulseRed 1s infinite;
-}
 
 body {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
@@ -441,10 +420,36 @@ body {
     gap: 4px;
 }
 
-.stop-btn {
+/* Voice Button */
+.voice-btn {
     background: transparent;
     border: none;
     color: var(--text-secondary);
+    cursor: pointer;
+    padding: 6px;
+    border-radius: 50%;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.voice-btn:hover {
+    background: var(--bg-main);
+    color: var(--accent);
+}
+
+.voice-btn.recording {
+    background: rgba(239,68,68,0.2);
+    color: var(--danger);
+    animation: pulseRed 1s infinite;
+}
+
+/* STOP BUTTON */
+.stop-btn {
+    background: rgba(239,68,68,0.15);
+    border: none;
+    color: #ef4444;
     cursor: pointer;
     padding: 6px;
     border-radius: 50%;
@@ -455,20 +460,19 @@ body {
 }
 
 .stop-btn:hover {
-    background: rgba(239,68,68,0.2);
-    color: var(--danger);
+    background: rgba(239,68,68,0.3);
+    transform: scale(1.05);
 }
 
 .stop-btn.active {
-    background: rgba(239,68,68,0.2);
-    color: var(--danger);
     animation: pulseRed 1s infinite;
 }
 
-.voice-btn, .send-btn {
+/* Send Button */
+.send-btn {
     background: transparent;
     border: none;
-    color: var(--text-secondary);
+    color: var(--accent);
     cursor: pointer;
     padding: 6px;
     border-radius: 50%;
@@ -478,19 +482,9 @@ body {
     justify-content: center;
 }
 
-.voice-btn:hover, .send-btn:hover {
+.send-btn:hover {
     background: var(--bg-main);
-    color: var(--accent);
-}
-
-.send-btn {
-    color: var(--accent);
-}
-
-.voice-btn.recording {
-    background: rgba(239,68,68,0.2);
-    color: var(--danger);
-    animation: pulseRed 1s infinite;
+    transform: scale(1.05);
 }
 
 @keyframes pulseRed {
@@ -734,50 +728,6 @@ input[type="range"]::-webkit-slider-thumb {
 ::-webkit-scrollbar-thumb {
     background: var(--border);
     border-radius: 3px;
-}
-/* ============ STOP BUTTON STYLES (ADD THIS) ============ */
-.stop-btn {
-    background: rgba(239,68,68,0.15);
-    border: none;
-    color: #ef4444;
-    cursor: pointer;
-    padding: 6px;
-    border-radius: 50%;
-    transition: all 0.2s;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.stop-btn:hover {
-    background: rgba(239,68,68,0.3);
-    transform: scale(1.05);
-}
-
-.stop-btn.active {
-    animation: pulseRed 1s infinite;
-}
-
-/* Recording Status */
-.recording-status {
-    position: fixed;
-    bottom: 100px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: rgba(239,68,68,0.9);
-    color: white;
-    padding: 6px 16px;
-    border-radius: 30px;
-    font-size: 0.75rem;
-    z-index: 1000;
-    backdrop-filter: blur(10px);
-}
-
-/* Audio Controls */
-.audio-controls {
-    margin-top: 10px;
-    display: flex;
-    gap: 8px;
 }
 
 /* Mobile Responsive */
