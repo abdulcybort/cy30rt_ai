@@ -3,18 +3,30 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>Cy30rt_AI - DeepSeek Style</title>
+    <title>Cy30rt_AI - Cybersecurity Intelligence</title>
     <link rel="stylesheet" href="styles.css">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#0a0a0f">
     <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet">
 </head>
 <body>
-    <div class="app">
-        <!-- LEFT SIDEBAR - Exactly Like DeepSeek -->
+    <div class="app-container">
+        <!-- LEFT SIDEBAR - Chat History (Like DeepSeek) -->
         <aside class="sidebar" id="sidebar">
             <div class="sidebar-header">
-                <button id="newChatBtn" class="new-chat-btn">
+                <div class="logo-area">
+                    <div class="robot-icon-small">
+                        <div class="small-robot-head">
+                            <div class="small-robot-eyes">
+                                <span class="small-eye"></span>
+                                <span class="small-eye"></span>
+                            </div>
+                            <div class="small-robot-mouth"></div>
+                        </div>
+                    </div>
+                    <span class="logo-text">Cy30rt_AI</span>
+                </div>
+                <button id="newChatSidebarBtn" class="new-chat-btn">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <line x1="12" y1="5" x2="12" y2="19"/>
                         <line x1="5" y1="12" x2="19" y2="12"/>
@@ -23,35 +35,47 @@
                 </button>
             </div>
             
-            <div class="history-container">
-                <div class="history-header">Recent Chats</div>
-                <div class="history-list" id="historyList"></div>
+            <div class="history-header">
+                <span>Recent Chats</span>
+                <button id="clearAllHistoryBtn" class="clear-history-btn" title="Clear all history">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                    </svg>
+                </button>
+            </div>
+            
+            <div class="history-list" id="historyList">
+                <!-- Chat history items will appear here -->
             </div>
             
             <div class="sidebar-footer">
-                <div class="user-info">
-                    <div class="avatar">CY</div>
-                    <div class="user-details">
-                        <span class="user-name">Cy30rt_AI</span>
-                        <span class="user-status">Active</span>
-                    </div>
+                <div class="status-indicator-sidebar">
+                    <span class="status-dot-sidebar"></span>
+                    <span>DeepSeek-style UI</span>
+                </div>
+                <div class="creator-credit-sidebar">
+                    Abdulbasid Yakubu (cy30rt)
                 </div>
             </div>
         </aside>
         
-        <!-- MAIN CONTENT -->
-        <main class="main">
-            <!-- Top Bar - Minimal -->
-            <header class="top-bar">
+        <!-- MAIN CHAT AREA -->
+        <main class="main-content">
+            <!-- Top Bar -->
+            <header class="chat-header">
                 <button id="mobileMenuBtn" class="mobile-menu-btn">☰</button>
-                <div class="top-bar-right">
-                    <button id="settingsBtn" class="top-btn">
+                <div class="header-title">
+                    <h2>Cy30rt_AI</h2>
+                    <span class="header-badge">Cybersecurity Intelligence</span>
+                </div>
+                <div class="header-actions">
+                    <button id="settingsBtn" class="icon-btn" title="Settings">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                             <circle cx="12" cy="12" r="3"/>
                             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
                         </svg>
                     </button>
-                    <button id="languageBtn" class="top-btn">
+                    <button id="languageBtn" class="icon-btn" title="Language">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                             <path d="M12 2a10 10 0 1 0 10 10 10 10 0 0 0-10-10zM2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
                         </svg>
@@ -59,43 +83,49 @@
                 </div>
             </header>
             
-            <!-- Chat Messages Area -->
+            <!-- Chat Messages Container -->
             <div class="chat-area" id="chatArea">
                 <div class="messages-container" id="messagesContainer">
-                    <div class="welcome-screen">
+                    <div class="welcome-message">
                         <div class="welcome-icon">🤖</div>
                         <h1>Cy30rt_AI</h1>
-                        <p>How can I help you with cybersecurity today?</p>
-                        <div class="example-prompts">
-                            <button class="example-btn" data-prompt="What is SQL injection? Explain with examples.">What is SQL injection?</button>
-                            <button class="example-btn" data-prompt="How to perform network reconnaissance?">How to perform network reconnaissance?</button>
-                            <button class="example-btn" data-prompt="Explain Cross-Site Scripting (XSS) attacks.">Explain XSS attacks</button>
+                        <p>Your professional cybersecurity intelligence assistant</p>
+                        <div class="capabilities">
+                            <span>🔍 CVE Analysis</span>
+                            <span>🌐 Domain Recon</span>
+                            <span>📡 IP Intelligence</span>
+                            <span>💉 Payload References</span>
+                            <span>🌍 15 Languages</span>
+                            <span>🎤 Voice Input</span>
+                        </div>
+                        <div class="creator-note">
+                            Developed by Abdulbasid Yakubu (cy30rt)
                         </div>
                     </div>
                 </div>
             </div>
             
-            <!-- INPUT AREA - Exactly Like DeepSeek -->
+            <!-- Input Area (Like DeepSeek) -->
             <div class="input-area">
-                <div class="input-wrapper">
-                    <textarea id="messageInput" rows="1" placeholder="Message Cy30rt_AI..."></textarea>
-                    <div class="input-actions">
-                        <button id="voiceBtn" class="voice-btn" title="Voice input">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <div class="input-container">
+                    <textarea id="messageInput" rows="1" placeholder="Ask anything about cybersecurity..."></textarea>
+                    <div class="input-buttons">
+                        <button id="voiceBtn" class="voice-input-btn" title="Voice Input">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
                                 <path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8"/>
                             </svg>
                         </button>
                         <button id="sendBtn" class="send-btn">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <line x1="22" y1="2" x2="11" y2="13"/>
                                 <polygon points="22 2 15 22 11 13 2 9 22 2"/>
                             </svg>
                         </button>
                     </div>
                 </div>
-                <div class="input-note">
-                    <span>Powered by Groq AI + Cerebras</span>
+                <div class="input-footer">
+                    <span>Powered by Groq AI + Cerebras + ContrastAPI</span>
                 </div>
             </div>
             
@@ -111,7 +141,7 @@
     
     <!-- Language Modal -->
     <div id="languageModal" class="modal">
-        <div class="modal-content">
+        <div class="modal-container">
             <div class="modal-header">
                 <h3>Select Language</h3>
                 <button class="modal-close">&times;</button>
@@ -122,7 +152,7 @@
     
     <!-- Settings Modal -->
     <div id="settingsModal" class="modal">
-        <div class="modal-content">
+        <div class="modal-container">
             <div class="modal-header">
                 <h3>Voice Settings</h3>
                 <button class="modal-close-settings">&times;</button>
@@ -143,14 +173,14 @@
                     </label>
                 </div>
                 <div class="setting-item">
-                    <label>Speech speed</label>
+                    <label>Speech rate</label>
                     <input type="range" id="voiceSpeed" min="0.5" max="2.0" step="0.05" value="1.0">
-                    <span id="speedValue">Normal</span>
+                    <span id="speedValue" class="setting-value">Normal</span>
                 </div>
                 <div class="setting-item">
                     <label>Speech pitch</label>
                     <input type="range" id="voicePitch" min="0.5" max="2.0" step="0.05" value="1.0">
-                    <span id="pitchValue">Normal</span>
+                    <span id="pitchValue" class="setting-value">Normal</span>
                 </div>
             </div>
         </div>
